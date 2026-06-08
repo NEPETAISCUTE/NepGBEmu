@@ -4,5 +4,6 @@
 #include "PPU.h"
 
 u32 PPURendererDrawScanline(PPU* ppu);
+void PPURendererDrawTilesetScanline(PPU* ppu);
 
 #endif	// NEPGB_PPU_RENDERER_H
