@@ -2,7 +2,6 @@
 #define NEPGB_INSTRUCTIONS_H
 
 #include "CPU.h"
-#include "common.h"
 
 typedef enum RegisterID {
 	REG8_B = 0,

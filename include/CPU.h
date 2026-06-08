@@ -2,7 +2,6 @@
 #define NEPGB_CPU_H
 
 #include "MemoryBus.h"
-#include "common.h"
 
 #define FLAG_CARRY 4
 #define FLAG_HALFCARRY 5

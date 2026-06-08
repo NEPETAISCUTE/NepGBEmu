@@ -1,26 +1,23 @@
 #ifndef NEPGB_PPU_H
 #define NEPGB_PPU_H
 
-#include <raylib.h>
-#include <stdlib.h>
-
 #include "MemoryBus.h"
-#include "common.h"
+
+#define PPU_SCREEN_WIDTH 160
+#define PPU_SCREEN_HEIGHT 144
 
 typedef struct PPU {
 	MemoryBus* bus;
 
-	RenderTexture2D* framebuffer;
+	Color framebuffer[PPU_SCREEN_WIDTH * PPU_SCREEN_HEIGHT];
+	Texture frameTex;
 
 	size_t frame;
 	size_t scanline;
 	size_t cycle;
 } PPU;
 
-#define PPU_SCREEN_WIDTH 160
-#define PPU_SCREEN_HEIGHT 144
-
-PPU* PPUCreate(RenderTexture2D* framebuffer, MemoryBus* bus);
+PPU* PPUCreate(MemoryBus* bus);
 void PPUDestroy(PPU* ppu);
 
 void PPUUpdate(PPU* ppu);

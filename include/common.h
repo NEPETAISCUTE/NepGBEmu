@@ -9,6 +9,14 @@ typedef signed char s8;
 typedef signed short s16;
 typedef signed int s32;
 
+#include <math.h>
+#include <raylib.h>
+#include <raymath.h>
+#include <stdbool.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
 #include "Byte.h"
 
 #endif	// NEPGB_COMMON_H

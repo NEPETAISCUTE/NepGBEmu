@@ -13,7 +13,7 @@ TileStrip* TileStripCreate(PPU* ppu, u8 tileID, u8 scanline, u16 blockOrigin) {
 	u8 byteLow = MemoryBusRead(ppu->bus, blockOrigin + tileID * 0x10 + relY * 2 + 1, false);
 	for (u8 i = 0; i < 8; i++) {
 		u8 colorIndex = BuildU2(GetBit(byteHigh, i), GetBit(byteLow, i));
-		printf("tileID = %d, relY = %d, relX = %d, colorIndex = %d\n", tileID, relY, 7 - i, colorIndex);
+		// printf("tileID = %d, relY = %d, relX = %d, colorIndex = %d\n", tileID, relY, 7 - i, colorIndex);
 		tileStrip->pixelArray[7 - i] = colorIndex;	// apparently it's backwards
 	}
 	return tileStrip;

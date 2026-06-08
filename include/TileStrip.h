@@ -3,7 +3,6 @@
 
 #include "MemoryBus.h"
 #include "PPU.h"
-#include "common.h"
 
 typedef struct TileStrip {
 	u8 pixelArray[8];

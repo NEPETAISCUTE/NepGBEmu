@@ -1,8 +1,6 @@
 #ifndef NEPGB_MEMORY_BUS_H
 #define NEPGB_MEMORY_BUS_H
 
-#include <common.h>
-
 #include "Cartridge.h"
 #include "PPURegisters.h"
 
