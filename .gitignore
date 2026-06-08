@@ -1,5 +1,5 @@
+build/
+.vscode/
+
 *.gb
-build
-.vscode
-.clang-format
 nepEmuGB
