@@ -75,7 +75,8 @@ void PPUUpdate(PPU* ppu) {
 		} else if (ppu->cycle == CYCLE_OAMSCAN_END) {
 			ppu->bus->oamLock = true;
 			ppu->bus->videoMemLock = true;
-			if (ppu->cycle == CYCLE_OAMSCAN_END) ppu->cycle += PPURendererDrawScanline(ppu) - 1;
+			ppu->cycle += PPURendererDrawScanline(ppu) - 1;
+			// PPURendererDrawTilesetScanline(ppu);
 		} else {
 			ppu->bus->oamLock = false;
 			ppu->bus->videoMemLock = false;
