@@ -1,0 +1,4 @@
+*.gb
+build
+.vscode
+.clang-format
