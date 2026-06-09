@@ -12,7 +12,7 @@ void busMemcpy(MemoryBus* bus, u8* src, u16 address, size_t size) {
 }
 
 int main(int argc, char** argv) {
-	if (argc != 2) return -1;
+	if (argc < 2) return -1;
 
 	FILE* f = fopen(argv[1], "r");
 	if (f == NULL) {
@@ -37,7 +37,7 @@ int main(int argc, char** argv) {
 	free(bytes);
 	if (!c) return EXIT_FAILURE;
 	// todo: look into how to do that lol
-	MemoryBus* bus = MemoryBusCreate(c, NULL);
+	MemoryBus* bus = MemoryBusCreate(c);
 	if (!bus) {
 		free(c);
 		return EXIT_FAILURE;
@@ -428,10 +428,13 @@ int main(int argc, char** argv) {
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 		0x00};
 
-	busMemcpy(bus, tetrisTileset, 0x8000, sizeof(tetrisTileset) / sizeof(u8));
-	busMemcpy(bus, tetrisTileMap, 0x9800, sizeof(tetrisTileMap) / sizeof(u8));
+	// busMemcpy(bus, tetrisTileset, 0x8000, sizeof(tetrisTileset) / sizeof(u8));
+	// busMemcpy(bus, tetrisTileMap, 0x9800, sizeof(tetrisTileMap) / sizeof(u8));
 
-	InitWindow(600, 400, "NepGB");
+	// TODO: not hardcode window size to a factor of original gameboy resolution
+	size_t factor = 4;
+
+	InitWindow(PPU_SCREEN_WIDTH * factor, PPU_SCREEN_HEIGHT * factor, "NepGB");
 	InitAudioDevice();
 
 	PPU* ppu = PPUCreate(bus);
@@ -443,9 +446,32 @@ int main(int argc, char** argv) {
 		(Color){0x1b, 0x2a, 0x09, 0xFF},
 	};
 
+	u8 scroll = 0;
+	bool nametableYChange = false;
+	size_t frame = 0;
 	SetTargetFPS(60);
+	MemoryBusWriteCPU(bus, 0xFF47, 0b00011011);
+	// MemoryBusWriteCPU(bus, 0xFF43, 7);
 	while (!WindowShouldClose()) {
+		CPURunInstruction(cpu);
 		PPUUpdate(ppu);
+		PPUUpdate(ppu);
+		PPUUpdate(ppu);
+		PPUUpdate(ppu);
+		/*if (ppu->frame != frame) {
+			frame++;
+			if (scroll == 0xFF) {
+				nametableYChange = !nametableYChange;
+				u8 LCDCValue = MemoryBusReadCPU(bus, 0xFF40);
+				MemoryBusWriteCPU(bus, 0xFF40, AssignBit(LCDCValue, 3, nametableYChange));
+			}
+			MemoryBusWriteCPU(bus, 0xFF43, scroll);
+			MemoryBusWriteCPU(bus, 0xFF42, scroll);
+			scroll++;
+			// WaitTime(1);
+			// printf("new frame, scrollY: %02X\n", scrollY);
+		}
+			*/
 	}
 
 	PPUDestroy(ppu);
