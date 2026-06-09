@@ -31,6 +31,7 @@ PPU* PPUCreate(MemoryBus* bus) {
 	}
 
 	ppu->bus = bus;
+	ppu->bus->ppuRegs.rLCDC = SetBit(ppu->bus->ppuRegs.rLCDC, 7);
 
 	return ppu;
 }
@@ -58,8 +59,8 @@ static void PPURenderFrame(PPU* ppu) {
 	const Rectangle dest = (Rectangle){
 		.x = 0,
 		.y = 0,
-		.width = 600,
-		.height = 400,
+		.width = GetRenderWidth(),
+		.height = GetRenderHeight(),
 	};
 
 	BeginDrawing();
@@ -70,20 +71,52 @@ static void PPURenderFrame(PPU* ppu) {
 }
 
 void PPUUpdate(PPU* ppu) {
+	if (!ppu->isOff && !GetFlag(ppu->bus->ppuRegs.rLCDC, 7)) {
+		ppu->bus->oamLock = false;
+		ppu->bus->videoMemLock = false;
+
+		ppu->scanline = 0;
+		ppu->cycle = 0;
+
+		for (size_t i = 0; i < PPU_SCREEN_WIDTH * PPU_SCREEN_HEIGHT; i++) {
+			ppu->framebuffer[i] = DMG_MASTER_PALETTE[4];  // whiter than white, color impossible to get without screen off
+		}
+
+		ppu->bus->ppuRegs.rSTAT = AssignBits(ppu->bus->ppuRegs.rSTAT, 0, 2, 0);	 // mode 0
+
+		ppu->isOff = true;
+		return;
+	}
+
+	if (ppu->isOff) {
+		if (GetFlag(ppu->bus->ppuRegs.rLCDC, 7)) {
+			ppu->isOff = false;
+			// will render whatever there is to draw in VRAM, so no need to fill the framebuffer
+		} else {
+			PPURenderFrame(ppu);
+			return;
+		}
+	}
+
 	if (ppu->scanline < SCANLINE_VBLANK_START) {
-		if (ppu->cycle < CYCLE_OAMSCAN_END) {
+		if (ppu->cycle == 0) {
+			ppu->bus->oamLock = true;
+			ppu->bus->ppuRegs.rSTAT = AssignBits(ppu->bus->ppuRegs.rSTAT, 0, 2, 2);	 // mode 2
+		} else if (ppu->cycle < CYCLE_OAMSCAN_END) {
 		} else if (ppu->cycle == CYCLE_OAMSCAN_END) {
 			ppu->bus->oamLock = true;
 			ppu->bus->videoMemLock = true;
 			ppu->cycle += PPURendererDrawScanline(ppu) - 1;
-			// PPURendererDrawTilesetScanline(ppu);
+			ppu->bus->ppuRegs.rSTAT = AssignBits(ppu->bus->ppuRegs.rSTAT, 0, 2, 3);	 // mode 3
+																					 // PPURendererDrawTilesetScanline(ppu);
 		} else {
 			ppu->bus->oamLock = false;
 			ppu->bus->videoMemLock = false;
-			// TODO:
-			//  take in account SCX penality (SCX % 8)
-			//  take in account window fetcher setup (6 dots)
-			//  take in account OBJ penalty (6 to 11 dots)
+			ppu->bus->ppuRegs.rSTAT = AssignBits(ppu->bus->ppuRegs.rSTAT, 0, 2, 0);	 // mode 0
+																					 // TODO:
+																					 //  take in account SCX penality (SCX % 8)
+																					 //  take in account window fetcher setup (6 dots)
+																					 //  take in account OBJ penalty (6 to 11 dots)
 			//  - number of pixels to the right of the pixel to draw if tile not
 			//  considered before - 2 (if negative, 0 penalty)
 			//  - add a base penalty of 6 dots
@@ -92,6 +125,7 @@ void PPUUpdate(PPU* ppu) {
 	} else if (ppu->scanline < SCANLINE_VBLANK_END) {
 		ppu->bus->oamLock = false;
 		ppu->bus->videoMemLock = false;
+		ppu->bus->ppuRegs.rSTAT = AssignBits(ppu->bus->ppuRegs.rSTAT, 0, 2, 1);	 // mode 1
 	} else {
 		ppu->scanline = 0;
 		ppu->frame++;
@@ -107,8 +141,7 @@ void PPUUpdate(PPU* ppu) {
 		ppu->bus->oamLock = true;
 		ppu->bus->videoMemLock = false;
 	}
-	// TODO: uncomment once there are PPURegs
-	// ppu->bus->ppuRegs->rLY = ppu->scanline;
+	ppu->bus->ppuRegs.rLY = ppu->scanline;
 }
 
 void PPUPlot(PPU* ppu, u8 x, u8 y, Color c) {
