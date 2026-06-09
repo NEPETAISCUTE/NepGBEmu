@@ -28,7 +28,7 @@ typedef struct MemoryBus {
 	// 0xFFFF: Interrupt Enable register (IE)
 
 	Cartridge* cart;
-	PPURegisters* ppuRegs;
+	PPURegisters ppuRegs;
 
 	// TODO: move videoRam to PPU, as it's the PPU's role to handle whether VRAM is locked or not, depending on the rendering process
 	u8 videoRAM[0x4000];
@@ -44,7 +44,7 @@ typedef struct MemoryBus {
 	bool videoMemLock;
 } MemoryBus;
 
-MemoryBus* MemoryBusCreate(Cartridge* cart, PPURegisters* ppuRegs);
+MemoryBus* MemoryBusCreate(Cartridge* cart);
 void MemoryBusDestroy(MemoryBus* bus);
 
 u8 MemoryBusRead(MemoryBus* bus, u16 address, bool isCPU);
