@@ -8,7 +8,7 @@ TileStrip* TileStripCreate(PPU* ppu, u8 tileID, u8 scanline, u16 blockOrigin) {
 	if (tileStrip == NULL) return NULL;
 
 	if (tileID >= 128) blockOrigin = 0x8800;
-	u8 relY = scanline % 8;
+	u8 relY = scanline;
 	u8 byteHigh = MemoryBusRead(ppu->bus, blockOrigin + (tileID % 128) * 0x10 + relY * 2, false);
 	u8 byteLow = MemoryBusRead(ppu->bus, blockOrigin + (tileID % 128) * 0x10 + relY * 2 + 1, false);
 	for (u8 i = 0; i < 8; i++) {
