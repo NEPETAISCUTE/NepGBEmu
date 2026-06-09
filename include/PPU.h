@@ -1,6 +1,7 @@
 #ifndef NEPGB_PPU_H
 #define NEPGB_PPU_H
 
+#include "MasterPalette.h"
 #include "MemoryBus.h"
 
 #define PPU_SCREEN_WIDTH 160
@@ -15,6 +16,8 @@ typedef struct PPU {
 	size_t frame;
 	size_t scanline;
 	size_t cycle;
+
+	bool isOff;
 } PPU;
 
 PPU* PPUCreate(MemoryBus* bus);
