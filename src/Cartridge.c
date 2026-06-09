@@ -191,8 +191,8 @@ u8 CartridgeRead(Cartridge* cart, u16 address) {
 }
 
 void CartridgeWrite(Cartridge* cart, u16 address, u8 value) {
-	if (cart->header.ramSize >= 0 && address >= CARTRIDGE_RAM_START && address <= CARTRIDGE_RAM_END) {
+	if (cart->header.ramSize > 0 && address >= CARTRIDGE_RAM_START && address <= CARTRIDGE_RAM_END) {
 		// TODO: add support for mappers
-		cart->ram[address - CARTRIDGE_RAM_START] = value;
+		cart->ram[(address - CARTRIDGE_RAM_START) % cart->header.ramSize] = value;
 	}
 }
