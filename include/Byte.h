@@ -6,7 +6,7 @@
 #define ClearBit(value, index) ((value) & ~(1 << (index)))
 #define FlipBit(value, index) ((value) ^ (1 << (index)))
 
-#define GetBits(value, index, len) (((value) >> (index)) & (1 << ((len) - 1)))
+#define GetBits(value, index, len) (((value) >> (index)) & ((1 << (len)) - 1))
 
 #define GetFlag(value, index) (GetBit(value, index) == 1)
 
@@ -19,6 +19,8 @@
 
 #define AssignBit(value, index, flag) ((flag) ? SetBit(value, index) : ClearBit(value, index))
 // #define AssignBit(value, index, bit) SetFlagValue(value, index, bit == 1)
+
+#define AssignBits(value, index, len, flags) (((value) & ~((1 << (len)) - 1)) | ((flags) & ((1 << (len)) - 1)))
 
 #define GetLowByte(value) ((value) & 0xFF)
 #define GetHighByte(value) (((value) >> 8) & 0xFF)
