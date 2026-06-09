@@ -61,6 +61,8 @@ typedef struct CPU {
 	bool veryLowPower;
 	bool isHardLocked;
 
+	u8 instructionByteAdvance;
+
 	u8 cycle;
 	u8 extraCycle;	// may be unused, not sure if there are cycle penalties
 
@@ -76,5 +78,7 @@ u8 CPUPop8(CPU* cpu);
 
 void CPUPush16(CPU* cpu, u16 value);
 u16 CPUPop16(CPU* cpu);
+
+void CPURunInstruction(CPU* cpu);
 
 #endif	// NEPGB_CPU_H
