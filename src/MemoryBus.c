@@ -27,11 +27,13 @@ const u8 BOOT_ROM_DMG[] = {
 	0x19, 0x78, 0x86, 0x23, 0x05, 0x20, 0xfb, 0x86, 0x20, 0xfe, 0x3e, 0x01, 0xe0, 0x50,
 };
 
-MemoryBus* MemoryBusCreate(Cartridge* cart, PPURegisters* ppuRegs) {
+MemoryBus* MemoryBusCreate(Cartridge* cart) {
 	MemoryBus* bus = malloc(sizeof(MemoryBus));
 	if (bus == NULL) return NULL;
 
 	bus->cart = cart;
+
+	bus->isBootRomLoaded = true;
 
 	// default bank
 	bus->workRAMBank = 0;
@@ -98,7 +100,11 @@ u8 MemoryBusRead(MemoryBus* bus, u16 address, bool isCPU) {
 	}
 
 	if (address >= IO_REG_START && address < HRAM_START) {
-		if (address == 0xFF47) {
+		if (address <= 0xFF3F) {
+		} else if (address <= 0xFF4B) {
+			return PPURegistersRead(&bus->ppuRegs, address);
+		} else if (false) {
+		} else {
 		}
 		return 0;
 	}
@@ -160,7 +166,12 @@ void MemoryBusWrite(MemoryBus* bus, u16 address, u8 value, bool isCPU) {
 	}
 
 	if (address >= IO_REG_START && address < HRAM_START) {
-		// WIP
+		if (address <= 0xFF3F) {
+		} else if (address <= 0xFF4B) {
+			PPURegistersWrite(&bus->ppuRegs, address, value);
+		} else if (false) {
+		} else {
+		}
 		return;
 	}
 
