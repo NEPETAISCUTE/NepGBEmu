@@ -190,6 +190,7 @@ static void registerRotateLeft(CPU* cpu, RegisterID id, bool affectZFlag) {
 	} else {
 		CPUSetFlags(cpu, false, false, false, carryFlag);
 	}
+	*reg = val;
 }
 
 static void registerRotateRight(CPU* cpu, RegisterID id, bool affectZFlag) {
@@ -330,8 +331,20 @@ void ADDr16Tohl(CPU* cpu, RegisterID regId) {
 }
 
 // Z, N and H TODO: implement flag handling
-void INCr8(CPU* cpu, RegisterID regId) { writeToRegister8(cpu, readFromRegister8(cpu, regId) + 1, regId); }
-void DECr8(CPU* cpu, RegisterID regId) { writeToRegister8(cpu, readFromRegister8(cpu, regId) - 1, regId); }
+void INCr8(CPU* cpu, RegisterID regId) {
+	u8 regVal = readFromRegister8(cpu, regId);
+	u8 val = regVal + (u8)(1);
+	bool halfCarry = val > 0xF;
+	writeToRegister8(cpu, val, regId);
+	CPUSetFlags(cpu, val == 0, true, halfCarry, GetFlag(cpu->f, FLAG_CARRY));
+}
+void DECr8(CPU* cpu, RegisterID regId) {
+	u8 regVal = readFromRegister8(cpu, regId);
+	u8 val = regVal - (u8)(1);
+	bool halfCarry = ((regVal & 0xF) - (1)) < 0;
+	writeToRegister8(cpu, val, regId);
+	CPUSetFlags(cpu, val == 0, true, halfCarry, GetFlag(cpu->f, FLAG_CARRY));
+}
 
 // no flags
 void LDImm8Tor8(CPU* cpu, RegisterID regId, u8 value) { writeToRegister8(cpu, value, regId); }
@@ -381,8 +394,9 @@ void CCF(CPU* cpu) {
 }
 
 void JRImm8(CPU* cpu, s8 value) {
-	u16 address = (u16)(cpu->pc + (value)) + 2;
+	u16 address = (u16)((cpu->pc + (value)) + 2);
 	cpu->pc = address;
+	cpu->instructionByteAdvance = 0;
 }
 void JRCondImm8(CPU* cpu, Condition cond, u8 value) {
 	switch (cond) {
@@ -402,8 +416,7 @@ void JRCondImm8(CPU* cpu, Condition cond, u8 value) {
 		default: return;
 	}
 
-	u16 address = (u16)(cpu->pc + (value)) + 2;
-	cpu->pc = address;
+	JRImm8(cpu, value);
 }
 
 void STOP(CPU* cpu) { cpu->veryLowPower = true; }
@@ -603,7 +616,10 @@ void RETcond(CPU* cpu, Condition cond) {
 
 	RET(cpu);
 }
-void RET(CPU* cpu) { cpu->pc = CPUPop16(cpu); }
+void RET(CPU* cpu) {
+	cpu->pc = CPUPop16(cpu);
+	cpu->instructionByteAdvance = 0;
+}
 void RETI(CPU* cpu) {
 	EI(cpu);
 	RET(cpu);
@@ -627,8 +643,12 @@ void JPcondImm16(CPU* cpu, Condition cond, u16 value) {
 	}
 
 	cpu->pc = value;
+	cpu->instructionByteAdvance = 0;
 }
-void JPImm16(CPU* cpu, u16 value) { cpu->pc = value; }
+void JPImm16(CPU* cpu, u16 value) {
+	cpu->pc = value;
+	cpu->instructionByteAdvance = 0;
+}
 void JPhl(CPU* cpu) { JPImm16(cpu, cpu->hl); }
 void CALLcondImm16(CPU* cpu, Condition cond, u16 value) {
 	switch (cond) {
@@ -654,6 +674,7 @@ void CALLImm16(CPU* cpu, u16 value) {
 	// instruction is 3 byte long, so skip those 3 bytes, because you want to return to the instruction after this one
 	CPUPush16(cpu, cpu->pc + 3);
 	JPImm16(cpu, value);
+	cpu->instructionByteAdvance = 0;
 }
 void RST(CPU* cpu, u8 value) { CALLImm16(cpu, value * 8); }
 
