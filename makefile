@@ -2,7 +2,7 @@ RM+=-rfv
 
 CC     := gcc
 CFLAGS := -Wall -O3
-DFLAGS := -Wall -g
+DFLAGS := -Wall -g #-DDEBUG
 LIBS   := -lraylib -lpthread -ldl -lc -lm
 LD     := gcc
 
