@@ -2,6 +2,8 @@
 
 #include <stdlib.h>
 
+#include "Joypad.h"
+
 const u16 VRAM_START = 0x8000;
 const u16 WRAM_BANK0_START = 0xC000;
 const u16 WRAM_BANKX_START = 0xD000;
@@ -41,6 +43,16 @@ MemoryBus* MemoryBusCreate(Cartridge* cart) {
 	bus->oamLock = false;
 	bus->videoMemLock = false;
 
+	// registers init
+	bus->ppuRegs.rLCDC = 0;
+	bus->ppuRegs.rSCX = 0;
+	bus->ppuRegs.rSCY = 0;
+	bus->ppuRegs.rSTAT = 0;
+	bus->rIF = 0;
+	bus->rIE = 0;
+
+	bus->joyReg.selector = 0;
+
 	return bus;
 }
 
@@ -60,6 +72,7 @@ u8 MemoryBusRead(MemoryBus* bus, u16 address, bool isCPU) {
 	// 0xFF80 - 0xFFFE: HRAM
 	// 0xFFFF: Interrupt Enable register (IE)
 
+	// TODO: add support for the rBANK register, which is what truly controls when the bootrom is accessible or not
 	if (address < 0x100 && bus->isBootRomLoaded) {
 		return BOOT_ROM_DMG[address];
 	}
@@ -73,7 +86,11 @@ u8 MemoryBusRead(MemoryBus* bus, u16 address, bool isCPU) {
 	}
 
 	if (address >= VRAM_START && address < CARTRIDGE_RAM_START) {
-		if (isCPU && bus->videoMemLock) return 0xFF;
+		if (isCPU && bus->videoMemLock) {
+			fprintf(stderr, "CPU attempting to read video memory while it is locked, addr = %04X, LY = %ld, mode = %d\n", address,
+					bus->ppuRegs.rLY, GetBits(bus->ppuRegs.rSTAT, 0, 2));
+			return 0xFF;
+		}
 		return bus->videoRAM[address - VRAM_START];
 	}
 
@@ -94,13 +111,22 @@ u8 MemoryBusRead(MemoryBus* bus, u16 address, bool isCPU) {
 	}
 
 	if (address >= OAM_START && address < IO_REG_START) {
-		if (isCPU && bus->oamLock) return 0xFF;
+		if (isCPU && bus->oamLock) {
+			fprintf(stderr, "CPU attempting to read OAM while it is locked, addr = %04X, LY = %ld, mode = %d\n", address, bus->ppuRegs.rLY,
+					GetBits(bus->ppuRegs.rSTAT, 0, 2));
+			return 0xFF;
+		}
 		// WIP
-		return 0;
+		return bus->oamMemory[address - OAM_START];
 	}
 
 	if (address >= IO_REG_START && address < HRAM_START) {
 		if (address <= 0xFF3F) {
+			if (address == 0xFF00) {
+				return JoypadRegRead(&bus->joyReg);
+			} else if (address == 0xFF0F) {
+				return bus->rIF;
+			}
 		} else if (address <= 0xFF4B) {
 			return PPURegistersRead(&bus->ppuRegs, address);
 		} else if (false) {
@@ -114,8 +140,7 @@ u8 MemoryBusRead(MemoryBus* bus, u16 address, bool isCPU) {
 	}
 
 	if (address == INTERRUPT_ENABLE) {
-		// WIP
-		return 0;
+		return bus->rIE;
 	}
 
 	return 0;
@@ -133,7 +158,11 @@ void MemoryBusWrite(MemoryBus* bus, u16 address, u8 value, bool isCPU) {
 	}
 
 	if (address >= VRAM_START && address < CARTRIDGE_RAM_START) {
-		if (isCPU && bus->videoMemLock) return;
+		if (isCPU && bus->videoMemLock) {
+			fprintf(stderr, "CPU attempting to write to video memory while it is locked, addr = %04X, value = %02X, LY = %ld, mode = %d\n",
+					address, value, bus->ppuRegs.rLY, GetBits(bus->ppuRegs.rSTAT, 0, 2));
+			return;
+		}
 
 		bus->videoRAM[address - VRAM_START] = value;
 		return;
@@ -160,13 +189,23 @@ void MemoryBusWrite(MemoryBus* bus, u16 address, u8 value, bool isCPU) {
 	}
 
 	if (address >= OAM_START && address < IO_REG_START) {
-		if (isCPU && bus->oamLock) return;
-		// WIP
+		if (isCPU && bus->oamLock) {
+			fprintf(stderr, "CPU attempting to write to OAM while it is locked, addr = %04X, value = %02X, LY = %ld, mode = %d\n", address,
+					value, bus->ppuRegs.rLY, GetBits(bus->ppuRegs.rSTAT, 0, 2));
+			return;
+		}
+		bus->oamMemory[address - OAM_START] = value;
 		return;
 	}
 
 	if (address >= IO_REG_START && address < HRAM_START) {
 		if (address <= 0xFF3F) {
+			if (address == 0xFF00) {
+				JoypadRegWrite(&bus->joyReg, value);
+			} else if (address == 0xFF0F) {
+				bus->rIF = value;
+				// fprintf(stderr, "value %X written to rIF\n", value);
+			}
 		} else if (address <= 0xFF4B) {
 			PPURegistersWrite(&bus->ppuRegs, address, value);
 		} else if (false) {
@@ -180,7 +219,8 @@ void MemoryBusWrite(MemoryBus* bus, u16 address, u8 value, bool isCPU) {
 	}
 
 	if (address == INTERRUPT_ENABLE) {
-		// WIP
+		bus->rIE = value;
+		// fprintf(stderr, "value %X written to rIE\n", value);
 		return;
 	}
 }

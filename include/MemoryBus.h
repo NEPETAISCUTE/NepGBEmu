@@ -2,6 +2,7 @@
 #define NEPGB_MEMORY_BUS_H
 
 #include "Cartridge.h"
+#include "Joypad.h"
 #include "PPURegisters.h"
 
 extern const u16 VRAM_START;
@@ -29,9 +30,12 @@ typedef struct MemoryBus {
 
 	Cartridge* cart;
 	PPURegisters ppuRegs;
+	JoypadReg joyReg;
 
 	// TODO: move videoRam to PPU, as it's the PPU's role to handle whether VRAM is locked or not, depending on the rendering process
 	u8 videoRAM[0x4000];
+	u8 oamMemory[0x9F];
+
 	u8 workRAM[0x8000];
 
 	u8 highRAM[0x7E];
@@ -42,6 +46,9 @@ typedef struct MemoryBus {
 
 	bool oamLock;
 	bool videoMemLock;
+
+	u8 rIE;
+	u8 rIF;
 } MemoryBus;
 
 MemoryBus* MemoryBusCreate(Cartridge* cart);
