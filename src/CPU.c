@@ -12,6 +12,10 @@ CPU* CPUCreate(MemoryBus* bus) {
 
 	cpu->pc = 0x0000;
 
+	cpu->f = 0x00;
+	cpu->lowPower = false;
+	cpu->veryLowPower = false;
+
 	return cpu;
 }
 void CPUDestroy(CPU* cpu) { free(cpu); }
@@ -297,15 +301,15 @@ void CPUDebugPrintInstruction(CPU* cpu, u8 opcode) {
 					} else if (GetBits(opcode, 0, 3) == 0b110) {
 						u8 imm8 = getImm8(cpu);
 						switch (GetBits(opcode, 3, 3)) {
-							case 0b000: printf("ADD "); break;
-							case 0b001: printf("ADC "); break;
-							case 0b010: printf("SUB "); break;
-							case 0b011: printf("SBC "); break;
+							case 0b000: printf("ADD A, "); break;
+							case 0b001: printf("ADC A, "); break;
+							case 0b010: printf("SUB A, "); break;
+							case 0b011: printf("SBC A, "); break;
 
-							case 0b100: printf("AND "); break;
-							case 0b101: printf("XOR "); break;
-							case 0b110: printf("OR "); break;
-							case 0b111: printf("CP "); break;
+							case 0b100: printf("AND A, "); break;
+							case 0b101: printf("XOR A, "); break;
+							case 0b110: printf("OR A, "); break;
+							case 0b111: printf("CP A, "); break;
 
 							default:
 								printf("\n");
@@ -314,8 +318,7 @@ void CPUDebugPrintInstruction(CPU* cpu, u8 opcode) {
 								while (true);
 								break;
 						}
-						printf("A, $%02X\n", imm8);
-						return;
+						printf("$%02X\n", imm8);
 					} else if (GetBits(opcode, 0, 4) == 0b0001) {
 						printf("POP ");
 						CPUDebugPrintRegister16STK(getOperandr16(cpu, opcode));
@@ -358,8 +361,6 @@ void CPUDebugPrintInstruction(CPU* cpu, u8 opcode) {
 										printf("JP");
 										CPUDebugPrintCond(getOperandCond(cpu, opcode));
 										printf(" $%04X\n", getImm16(cpu));
-										printf("opcode = %02X\n", opcode);
-										while (true);
 										break;
 									case 0b100:
 										printf("CALL");
@@ -381,6 +382,7 @@ void CPUDebugPrintInstruction(CPU* cpu, u8 opcode) {
 			}
 	}
 	cpu->instructionByteAdvance = 1;
+	putchar('\n');
 }
 
 void CPUDebugPrintState(CPU* cpu) {
@@ -389,12 +391,13 @@ void CPUDebugPrintState(CPU* cpu) {
 	printf("C = $%02X\n", cpu->c);
 	printf("D = $%02X\n", cpu->d);
 	printf("E = $%02X\n", cpu->e);
-	printf("F = ");
+	printf("F = $%02X\n", cpu->f);
+	/*printf("F = ");
 	(GetFlag(cpu->f, FLAG_ZERO)) ? putchar('Z') : putchar('0');
 	(GetFlag(cpu->f, FLAG_SUBTRACT)) ? putchar('N') : putchar('0');
 	(GetFlag(cpu->f, FLAG_HALFCARRY)) ? putchar('H') : putchar('0');
 	(GetFlag(cpu->f, FLAG_CARRY)) ? putchar('C') : putchar('0');
-	putchar('\n');
+	putchar('\n');*/
 	printf("HL = $%04X\n", cpu->hl);
 
 	printf("SP = $%04X\n", cpu->sp);
@@ -403,17 +406,53 @@ void CPUDebugPrintState(CPU* cpu) {
 		printf(" (BootROM)\n");
 	else
 		putchar('\n');
-	putchar('\n');
+
+	printf("LCDC = $%02X\n", MemoryBusReadCPU(cpu->bus, 0xFF40));
+	printf("STAT = $%02X\n", MemoryBusReadCPU(cpu->bus, 0xFF41));
+	printf("LY = $%02X\n", MemoryBusReadCPU(cpu->bus, 0xFF44));
+	printf("DIV = $%02X\n", MemoryBusReadCPU(cpu->bus, 0xFF04));
+	printf("IE = $%02X\n", MemoryBusReadCPU(cpu->bus, 0xFFFF));
+	printf("IF = $%02X\n", MemoryBusReadCPU(cpu->bus, 0xFF0F));
+}
+
+void CPUHandleInterrupt(CPU* cpu) {
+	if (!cpu->isInterruptEnabled) return;
+
+	u8 interruptFlags = MemoryBusReadCPU(cpu->bus, 0xFF0F);
+	u8 interruptEnable = MemoryBusReadCPU(cpu->bus, 0xFFFF);
+	for (size_t i = 0; i <= 4; i++) {
+		if (GetFlag(interruptFlags, i) && GetFlag(interruptEnable, i)) {
+			cpu->lowPower = false;
+			interruptFlags = ClearBit(interruptFlags, i);
+			MemoryBusWriteCPU(cpu->bus, 0xFF0F, interruptFlags);
+			printf("interrupt %d called\n", i);
+			cpu->isInterruptEnabled = false;
+			CPUPush16(cpu, cpu->pc);
+			cpu->pc = 0x40 + i * 0x8;  // call the handler basically
+			cpu->extraCycle = 2;
+			return;
+		}
+	}
 }
 
 void CPURunInstruction(CPU* cpu) {
 	if (cpu->bus->isBootRomLoaded && cpu->pc >= 0x100) cpu->bus->isBootRomLoaded = false;
+	if (cpu->extraCycle > 0) {
+		cpu->extraCycle--;
+		cpu->cycle++;
+		return;
+	}
+
+	CPUHandleInterrupt(cpu);
+	if (cpu->lowPower) return;
 
 	u8 opcode = MemoryBusReadCPU(cpu->bus, cpu->pc);
 
 #ifdef DEBUG
-	CPUDebugPrintState(cpu);
-	CPUDebugPrintInstruction(cpu, opcode);
+	if (!cpu->bus->isBootRomLoaded || cpu->pc >= 0x100) {
+		CPUDebugPrintState(cpu);
+		CPUDebugPrintInstruction(cpu, opcode);
+	}
 #endif
 
 	u8 selector = GetBits(opcode, 6, 2);
@@ -574,4 +613,6 @@ void CPURunInstruction(CPU* cpu) {
 			}
 	}
 	cpu->pc += cpu->instructionByteAdvance;
+	cpu->cycle++;
+	cpu->extraCycle--;
 }
