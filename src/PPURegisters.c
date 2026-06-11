@@ -6,7 +6,7 @@ u8 PPURegistersRead(PPURegisters* regs, u16 address) {
 		case PPUREGS_ADDRESS_STAT: return AssignBit(regs->rSTAT, 2, regs->rLYC == regs->rLY);
 		case PPUREGS_ADDRESS_SCY: return regs->rSCY;
 		case PPUREGS_ADDRESS_SCX: return regs->rSCX;
-		case PPUREGS_ADDRESS_LY: return regs->rLY;
+		case PPUREGS_ADDRESS_LY: return (GetFlag(regs->rLCDC, 7)) ? regs->rLY : 0;	// rLYC keeps its value after PPU off, but rLY returns 0
 		case PPUREGS_ADDRESS_LYC: return regs->rLYC;
 		case PPUREGS_ADDRESS_DMA: return regs->rDMA;
 		case PPUREGS_ADDRESS_BGP: return regs->rBGP;

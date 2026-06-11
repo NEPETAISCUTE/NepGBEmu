@@ -30,7 +30,6 @@ typedef struct PPURegisters {
 	// audio
 
 	// video
-	// DMG mode only
 	u8 rLCDC;
 	u8 rSTAT;
 	u8 rSCX;
