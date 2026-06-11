@@ -451,27 +451,12 @@ int main(int argc, char** argv) {
 	size_t frame = 0;
 	SetTargetFPS(60);
 	MemoryBusWriteCPU(bus, 0xFF47, 0b00011011);
-	// MemoryBusWriteCPU(bus, 0xFF43, 7);
 	while (!WindowShouldClose()) {
-		CPURunInstruction(cpu);
+		CPURunInstruction(cpu);	 // 1 MCycle = 4 T Cycles, so the cpu runs 4 times slower
 		PPUUpdate(ppu);
 		PPUUpdate(ppu);
 		PPUUpdate(ppu);
 		PPUUpdate(ppu);
-		/*if (ppu->frame != frame) {
-			frame++;
-			if (scroll == 0xFF) {
-				nametableYChange = !nametableYChange;
-				u8 LCDCValue = MemoryBusReadCPU(bus, 0xFF40);
-				MemoryBusWriteCPU(bus, 0xFF40, AssignBit(LCDCValue, 3, nametableYChange));
-			}
-			MemoryBusWriteCPU(bus, 0xFF43, scroll);
-			MemoryBusWriteCPU(bus, 0xFF42, scroll);
-			scroll++;
-			// WaitTime(1);
-			// printf("new frame, scrollY: %02X\n", scrollY);
-		}
-			*/
 	}
 
 	PPUDestroy(ppu);
