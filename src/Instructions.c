@@ -13,7 +13,10 @@ static void writeToRegister8(CPU* cpu, u8 value, RegisterID id) {
 		case REG8_E: cpu->e = value; break;
 		case REG8_H: cpu->h = value; break;
 		case REG8_L: cpu->l = value; break;
-		case REG8_DEREF_HL: MemoryBusWriteCPU(cpu->bus, cpu->hl, value); break;
+		case REG8_DEREF_HL:
+			cpu->extraCycle++;
+			MemoryBusWriteCPU(cpu->bus, cpu->hl, value);
+			break;
 
 		default: return;
 	}
@@ -28,7 +31,10 @@ static u8 readFromRegister8(CPU* cpu, RegisterID id) {
 		case REG8_E: return cpu->e;
 		case REG8_H: return cpu->h;
 		case REG8_L: return cpu->l;
-		case REG8_DEREF_HL: return MemoryBusReadCPU(cpu->bus, cpu->hl); break;
+		case REG8_DEREF_HL:
+			cpu->extraCycle++;
+			return MemoryBusReadCPU(cpu->bus, cpu->hl);
+			break;
 
 		default: return 0x00;
 	}
@@ -304,34 +310,51 @@ static void registerRotateRightC(CPU* cpu, RegisterID id, bool affectZFlag) {
 	}
 }
 
-void NOP([[maybe_unused]] CPU* cpu) { return; }
+void NOP([[maybe_unused]] CPU* cpu) {
+	cpu->extraCycle = 1;
+	return;
+}
 
 // no flags
-void LDImm16Tor16(CPU* cpu, RegisterID regId, u16 value) { writeToRegister16(cpu, value, regId, false); }
+void LDImm16Tor16(CPU* cpu, RegisterID regId, u16 value) {
+	cpu->extraCycle = 3;
+	writeToRegister16(cpu, value, regId, false);
+}
 void LDFromAToMem(CPU* cpu, RegisterID regId) {
+	cpu->extraCycle = 2;
 	u8 value = readFromRegister8(cpu, REG8_A);
 	writeToRegister16Memory(cpu, value, regId);
 }
 void LDfromMemToA(CPU* cpu, RegisterID regId) {
+	cpu->extraCycle = 2;
 	u8 value = readFromRegister16Memory(cpu, regId);
 	writeToRegister8(cpu, value, REG8_A);
 }
 void LDFromSPToMem(CPU* cpu, u16 value) {
+	cpu->extraCycle = 5;
 	MemoryBusWriteCPU(cpu->bus, value, GetLowByte(cpu->sp));
 	MemoryBusWriteCPU(cpu->bus, value + 1, GetHighByte(cpu->sp));
 }
 
 // no flags
-void INCr16(CPU* cpu, RegisterID regId) { writeToRegister16(cpu, readFromRegister16(cpu, regId, false) + 1, regId, false); }
-void DECr16(CPU* cpu, RegisterID regId) { writeToRegister16(cpu, readFromRegister16(cpu, regId, false) - 1, regId, false); }
+void INCr16(CPU* cpu, RegisterID regId) {
+	cpu->extraCycle = 2;
+	writeToRegister16(cpu, readFromRegister16(cpu, regId, false) + 1, regId, false);
+}
+void DECr16(CPU* cpu, RegisterID regId) {
+	cpu->extraCycle = 2;
+	writeToRegister16(cpu, readFromRegister16(cpu, regId, false) - 1, regId, false);
+}
 // H and C
 void ADDr16Tohl(CPU* cpu, RegisterID regId) {
+	cpu->extraCycle = 2;
 	u16 value = readFromRegister16(cpu, regId, false) + readFromRegister16(cpu, REG16_HL, false);
 	writeToRegister16(cpu, value, REG16_HL, false);
 }
 
 // Z, N and H TODO: implement flag handling
 void INCr8(CPU* cpu, RegisterID regId) {
+	cpu->extraCycle = 1;
 	u8 regVal = readFromRegister8(cpu, regId);
 	u8 val = regVal + (u8)(1);
 	bool halfCarry = val > 0xF;
@@ -339,6 +362,7 @@ void INCr8(CPU* cpu, RegisterID regId) {
 	CPUSetFlags(cpu, val == 0, true, halfCarry, GetFlag(cpu->f, FLAG_CARRY));
 }
 void DECr8(CPU* cpu, RegisterID regId) {
+	cpu->extraCycle = 1;
 	u8 regVal = readFromRegister8(cpu, regId);
 	u8 val = regVal - (u8)(1);
 	bool halfCarry = ((regVal & 0xF) - (1)) < 0;
@@ -347,18 +371,34 @@ void DECr8(CPU* cpu, RegisterID regId) {
 }
 
 // no flags
-void LDImm8Tor8(CPU* cpu, RegisterID regId, u8 value) { writeToRegister8(cpu, value, regId); }
+void LDImm8Tor8(CPU* cpu, RegisterID regId, u8 value) {
+	cpu->extraCycle = 2;
+	writeToRegister8(cpu, value, regId);
+}
 
 // C is touched, Z N and H are cleared
-void RLCA(CPU* cpu) { registerRotateLeftC(cpu, REG8_A, false); }
+void RLCA(CPU* cpu) {
+	cpu->extraCycle = 1;
+	registerRotateLeftC(cpu, REG8_A, false);
+}
 // C is touched, Z N and H are cleared
-void RRCA(CPU* cpu) { registerRotateLeftC(cpu, REG8_A, false); }
+void RRCA(CPU* cpu) {
+	cpu->extraCycle = 1;
+	registerRotateLeftC(cpu, REG8_A, false);
+}
 // flags already handled by static funcs
-void RLA(CPU* cpu) { registerRotateLeft(cpu, REG8_A, false); }
+void RLA(CPU* cpu) {
+	cpu->extraCycle = 1;
+	registerRotateLeft(cpu, REG8_A, false);
+}
 // flags already handled by static funcs
-void RRA(CPU* cpu) { registerRotateRight(cpu, REG8_A, false); }
+void RRA(CPU* cpu) {
+	cpu->extraCycle = 1;
+	registerRotateRight(cpu, REG8_A, false);
+}
 // carry is weird on this one, the rest is correct, TODO: look into carry implem here
 void DAA(CPU* cpu) {
+	cpu->extraCycle = 1;
 	bool nFlag = GetFlag(cpu->f, FLAG_SUBTRACT);
 	if (nFlag) {
 		u8 adjustment = 0;
@@ -376,6 +416,7 @@ void DAA(CPU* cpu) {
 }
 // N and H set, rest is unchanged
 void CPL(CPU* cpu) {
+	cpu->extraCycle = 1;
 	cpu->a = ~(cpu->a);
 	bool cFlag = GetFlag(cpu->f, FLAG_CARRY);
 	bool zFlag = GetFlag(cpu->f, FLAG_ZERO);
@@ -383,22 +424,26 @@ void CPL(CPU* cpu) {
 }
 // C set, N and H cleared
 void SCF(CPU* cpu) {
+	cpu->extraCycle = 1;
 	bool zFlag = GetFlag(cpu->f, FLAG_ZERO);
 	CPUSetFlags(cpu, zFlag, false, false, true);
 }
 // C = !C, N and H cleared
 void CCF(CPU* cpu) {
+	cpu->extraCycle = 1;
 	bool zFlag = GetFlag(cpu->f, FLAG_ZERO);
 	bool cFlag = GetFlag(cpu->f, FLAG_CARRY);
 	CPUSetFlags(cpu, zFlag, false, false, !cFlag);
 }
 
 void JRImm8(CPU* cpu, s8 value) {
+	cpu->extraCycle = 3;
 	u16 address = (u16)((cpu->pc + (value)) + 2);
 	cpu->pc = address;
 	cpu->instructionByteAdvance = 0;
 }
 void JRCondImm8(CPU* cpu, Condition cond, u8 value) {
+	cpu->extraCycle = 2;
 	switch (cond) {
 		case CONDITION_Z:
 			if (!GetFlag(cpu->f, FLAG_ZERO)) return;
@@ -415,14 +460,19 @@ void JRCondImm8(CPU* cpu, Condition cond, u8 value) {
 
 		default: return;
 	}
+	cpu->extraCycle++;
 
 	JRImm8(cpu, value);
 }
 
-void STOP(CPU* cpu) { cpu->veryLowPower = true; }
+void STOP(CPU* cpu) {
+	cpu->extraCycle = 1;
+	cpu->veryLowPower = true;
+}
 
 // works with everything but ld [hl], [hl] (which encodes STOP)
 void LDr8Tor8(CPU* cpu, RegisterID dest, RegisterID src) {
+	cpu->extraCycle = 1;
 	u8* destReg = NULL;
 	u8* srcReg = NULL;
 	u8 tmp;
@@ -458,9 +508,13 @@ void LDr8Tor8(CPU* cpu, RegisterID dest, RegisterID src) {
 		if (srcReg != NULL && destReg != NULL) *destReg = *srcReg;
 	}
 }
-void HALT(CPU* cpu) { cpu->lowPower = true; }
+void HALT(CPU* cpu) {
+	cpu->extraCycle = 1;
+	cpu->lowPower = true;
+}
 
 void ADDreg8(CPU* cpu, RegisterID regId) {
+	cpu->extraCycle = 1;
 	u16 sum = 0;
 
 	sum = cpu->a;
@@ -470,6 +524,7 @@ void ADDreg8(CPU* cpu, RegisterID regId) {
 	CPUSetFlags(cpu, GetLowByte(sum) == 0, false, sum > 0xF, sum > 0xFF);
 }
 void ADCreg8(CPU* cpu, RegisterID regId) {
+	cpu->extraCycle = 1;
 	u16 sum = 0;
 
 	sum = cpu->a;
@@ -481,6 +536,7 @@ void ADCreg8(CPU* cpu, RegisterID regId) {
 }
 // not sure how to handle half carry
 void SUBreg8(CPU* cpu, RegisterID regId) {
+	cpu->extraCycle = 1;
 	s16 sum = 0;
 
 	u8 value = readFromRegister8(cpu, regId);
@@ -495,6 +551,7 @@ void SUBreg8(CPU* cpu, RegisterID regId) {
 	CPUSetFlags(cpu, GetLowByte(sum) == 0, true, halfCarry, sum < 0);
 }
 void SBCreg8(CPU* cpu, RegisterID regId) {
+	cpu->extraCycle = 1;
 	s16 sum = 0;
 
 	u8 value = readFromRegister8(cpu, regId);
@@ -514,24 +571,29 @@ void SBCreg8(CPU* cpu, RegisterID regId) {
 }
 
 void ANDreg8(CPU* cpu, RegisterID regId) {
+	cpu->extraCycle = 1;
 	cpu->a = cpu->a & readFromRegister8(cpu, regId);
 	CPUSetFlags(cpu, cpu->a == 0, false, true, false);
 }
 void XORreg8(CPU* cpu, RegisterID regId) {
+	cpu->extraCycle = 1;
 	cpu->a = cpu->a ^ readFromRegister8(cpu, regId);
 	CPUSetFlags(cpu, cpu->a == 0, false, true, false);
 }
 void ORreg8(CPU* cpu, RegisterID regId) {
+	cpu->extraCycle = 1;
 	cpu->a = cpu->a | readFromRegister8(cpu, regId);
 	CPUSetFlags(cpu, cpu->a == 0, false, true, false);
 }
 void CPreg8(CPU* cpu, RegisterID regId) {
+	cpu->extraCycle = 1;
 	u8 value = readFromRegister8(cpu, regId);
 	bool halfCarry = ((cpu->a & 0xF) - (value & 0xF)) < 0;
 	CPUSetFlags(cpu, value == cpu->a, true, halfCarry, value > cpu->a);
 }
 
 void ADDimm8(CPU* cpu, u8 value) {
+	cpu->extraCycle = 2;
 	u16 sum = 0;
 
 	sum = cpu->a;
@@ -541,6 +603,7 @@ void ADDimm8(CPU* cpu, u8 value) {
 	CPUSetFlags(cpu, GetLowByte(sum) == 0, false, sum > 0xF, sum > 0xFF);
 }
 void ADCimm8(CPU* cpu, u8 value) {
+	cpu->extraCycle = 2;
 	u16 sum = 0;
 
 	sum = cpu->a;
@@ -552,6 +615,7 @@ void ADCimm8(CPU* cpu, u8 value) {
 }
 // not sure how to handle half carry
 void SUBimm8(CPU* cpu, u8 value) {
+	cpu->extraCycle = 2;
 	s16 sum = 0;
 
 	bool halfCarry = ((cpu->a & 0xF) - (value & 0xF)) < 0;
@@ -564,6 +628,7 @@ void SUBimm8(CPU* cpu, u8 value) {
 	CPUSetFlags(cpu, GetLowByte(sum) == 0, true, halfCarry, sum < 0);
 }
 void SBCimm8(CPU* cpu, u8 value) {
+	cpu->extraCycle = 2;
 	s16 sum = 0;
 
 	bool carry = GetFlag(cpu->f, FLAG_CARRY);
@@ -580,23 +645,28 @@ void SBCimm8(CPU* cpu, u8 value) {
 	CPUSetFlags(cpu, GetLowByte(sum) == 0, true, halfCarry, carry);
 }
 void ANDimm8(CPU* cpu, u8 value) {
+	cpu->extraCycle = 2;
 	cpu->a = cpu->a & value;
 	CPUSetFlags(cpu, cpu->a == 0, false, true, false);
 }
 void XORimm8(CPU* cpu, u8 value) {
+	cpu->extraCycle = 2;
 	cpu->a = cpu->a ^ value;
 	CPUSetFlags(cpu, cpu->a == 0, false, true, false);
 }
 void ORimm8(CPU* cpu, u8 value) {
+	cpu->extraCycle = 2;
 	cpu->a = cpu->a | value;
 	CPUSetFlags(cpu, cpu->a == 0, false, true, false);
 }
 void CPimm8(CPU* cpu, u8 value) {
+	cpu->extraCycle = 2;
 	bool halfCarry = ((cpu->a & 0xF) - (value & 0xF)) < 0;
 	CPUSetFlags(cpu, value == cpu->a, true, halfCarry, value > cpu->a);
 }
 
 void RETcond(CPU* cpu, Condition cond) {
+	cpu->extraCycle = 2;
 	switch (cond) {
 		case CONDITION_Z:
 			if (!GetFlag(cpu->f, FLAG_ZERO)) return;
@@ -613,18 +683,22 @@ void RETcond(CPU* cpu, Condition cond) {
 
 		default: return;
 	}
+	cpu->extraCycle = 5;
 
 	RET(cpu);
 }
 void RET(CPU* cpu) {
+	cpu->extraCycle = 4;
 	cpu->pc = CPUPop16(cpu);
 	cpu->instructionByteAdvance = 0;
 }
 void RETI(CPU* cpu) {
+	cpu->extraCycle = 4;
 	EI(cpu);
 	RET(cpu);
 }
 void JPcondImm16(CPU* cpu, Condition cond, u16 value) {
+	cpu->extraCycle = 3;
 	switch (cond) {
 		case CONDITION_Z:
 			if (!GetFlag(cpu->f, FLAG_ZERO)) return;
@@ -641,16 +715,22 @@ void JPcondImm16(CPU* cpu, Condition cond, u16 value) {
 
 		default: return;
 	}
+	cpu->extraCycle = 4;
 
 	cpu->pc = value;
 	cpu->instructionByteAdvance = 0;
 }
 void JPImm16(CPU* cpu, u16 value) {
+	cpu->extraCycle = 4;
 	cpu->pc = value;
 	cpu->instructionByteAdvance = 0;
 }
-void JPhl(CPU* cpu) { JPImm16(cpu, cpu->hl); }
+void JPhl(CPU* cpu) {
+	cpu->extraCycle = 1;
+	JPImm16(cpu, cpu->hl);
+}
 void CALLcondImm16(CPU* cpu, Condition cond, u16 value) {
+	cpu->extraCycle = 3;
 	switch (cond) {
 		case CONDITION_Z:
 			if (!GetFlag(cpu->f, FLAG_ZERO)) return;
@@ -667,30 +747,61 @@ void CALLcondImm16(CPU* cpu, Condition cond, u16 value) {
 
 		default: return;
 	}
+	cpu->extraCycle = 6;
 
 	CALLImm16(cpu, value);
 }
 void CALLImm16(CPU* cpu, u16 value) {
+	cpu->extraCycle = 6;
 	// instruction is 3 byte long, so skip those 3 bytes, because you want to return to the instruction after this one
+	if (value == 0x0c39) fprintf(stdout, "calling memset with data = %02X, dest = %04X, byte_count = %04X\n", cpu->d, cpu->de, cpu->bc);
 	CPUPush16(cpu, cpu->pc + 3);
 	JPImm16(cpu, value);
 	cpu->instructionByteAdvance = 0;
 }
-void RST(CPU* cpu, u8 value) { CALLImm16(cpu, value * 8); }
+void RST(CPU* cpu, u8 value) {
+	cpu->extraCycle = 4;
+	CALLImm16(cpu, value * 8);
+}
 
-void POPreg16Stk(CPU* cpu, RegisterID regId) { writeToRegister16(cpu, CPUPop16(cpu), regId, true); }
-void PUSHreg16Stk(CPU* cpu, RegisterID regId) { CPUPush16(cpu, readFromRegister16(cpu, regId, true)); }
+void POPreg16Stk(CPU* cpu, RegisterID regId) {
+	cpu->extraCycle = 3;
+	writeToRegister16(cpu, CPUPop16(cpu), regId, true);
+}
+void PUSHreg16Stk(CPU* cpu, RegisterID regId) {
+	cpu->extraCycle = 4;
+	CPUPush16(cpu, readFromRegister16(cpu, regId, true));
+}
 
 // all of those instructions are prefixed
-void LDHDerefCToa(CPU* cpu) { cpu->a = MemoryBusReadCPU(cpu->bus, BuildU16(0xFF, cpu->c)); }
-void LDHDerefImm8Toa(CPU* cpu, u8 value) { cpu->a = MemoryBusReadCPU(cpu->bus, BuildU16(0xFF, value)); }
-void LDDerefImm16Toa(CPU* cpu, u16 value) { cpu->a = MemoryBusReadCPU(cpu->bus, value); }
-void LDHaToDerefC(CPU* cpu) { MemoryBusWriteCPU(cpu->bus, BuildU16(0xFF, cpu->c), cpu->a); }
-void LDHaToDerefImm8(CPU* cpu, u8 value) { MemoryBusWriteCPU(cpu->bus, BuildU16(0xFF, value), cpu->a); }
-void LDaToDerefImm16(CPU* cpu, u16 value) { MemoryBusWriteCPU(cpu->bus, value, cpu->a); }
+void LDHDerefCToa(CPU* cpu) {
+	cpu->extraCycle = 2;
+	cpu->a = MemoryBusReadCPU(cpu->bus, BuildU16(0xFF, cpu->c));
+}
+void LDHDerefImm8Toa(CPU* cpu, u8 value) {
+	cpu->extraCycle = 3;
+	cpu->a = MemoryBusReadCPU(cpu->bus, BuildU16(0xFF, value));
+}
+void LDDerefImm16Toa(CPU* cpu, u16 value) {
+	cpu->extraCycle = 4;
+	cpu->a = MemoryBusReadCPU(cpu->bus, value);
+}
+void LDHaToDerefC(CPU* cpu) {
+	cpu->extraCycle = 2;
+	MemoryBusWriteCPU(cpu->bus, BuildU16(0xFF, cpu->c), cpu->a);
+}
+void LDHaToDerefImm8(CPU* cpu, u8 value) {
+	cpu->extraCycle = 3;
+	MemoryBusWriteCPU(cpu->bus, BuildU16(0xFF, value), cpu->a);
+}
+void LDaToDerefImm16(CPU* cpu, u16 value) {
+	cpu->extraCycle = 4;
+	MemoryBusWriteCPU(cpu->bus, value, cpu->a);
+}
 
 // unsure if carry and half carry are implemented correctly, to check
 void ADDsp(CPU* cpu, s8 value) {
+	cpu->extraCycle = 4;
 	s16 sum = cpu->sp + value;
 	u8 lowNybbleValue = ((cpu->sp & 0xFF) + (value & 0xF));
 	cpu->sp = sum;
@@ -699,44 +810,79 @@ void ADDsp(CPU* cpu, s8 value) {
 }
 // same as above
 void LDspPlusImm8ToHL(CPU* cpu, u8 value) {
+	cpu->extraCycle = 3;
 	s16 sum = cpu->sp + value;
 	u8 lowNybbleValue = ((cpu->sp & 0xFF) + (value & 0xF));
 	cpu->sp = sum;
 	bool isHalfCarry = lowNybbleValue < 0 || lowNybbleValue > 0xFF;
 	CPUSetFlags(cpu, false, false, isHalfCarry, value < 0 || value > 0xFFFF);
 }
-void LDhlToSP(CPU* cpu) { cpu->sp = cpu->hl; }
+void LDhlToSP(CPU* cpu) {
+	cpu->extraCycle = 2;
+	cpu->sp = cpu->hl;
+}
 
-void DI(CPU* cpu) { cpu->isInterruptEnabled = false; }
-void EI(CPU* cpu) { cpu->isInterruptEnabled = true; }
+void DI(CPU* cpu) {
+	cpu->extraCycle = 1;
+	cpu->isInterruptEnabled = false;
+}
+void EI(CPU* cpu) {
+	cpu->extraCycle = 1;
+	cpu->isInterruptEnabled = true;
+}
 
-void RLC(CPU* cpu, RegisterID regId) { registerRotateLeftC(cpu, regId, true); }
-void RRC(CPU* cpu, RegisterID regId) { registerRotateRightC(cpu, regId, true); }
-void RL(CPU* cpu, RegisterID regId) { registerRotateLeft(cpu, regId, true); }
-void RR(CPU* cpu, RegisterID regId) { registerRotateRight(cpu, regId, true); }
-void SLA(CPU* cpu, RegisterID regId) { registerShiftLeft(cpu, regId, true); }
-void SRA(CPU* cpu, RegisterID regId) { registerShiftRight(cpu, regId, true, true); }
+void RLC(CPU* cpu, RegisterID regId) {
+	cpu->extraCycle = 2;
+	registerRotateLeftC(cpu, regId, true);
+}
+void RRC(CPU* cpu, RegisterID regId) {
+	cpu->extraCycle = 2;
+	registerRotateRightC(cpu, regId, true);
+}
+void RL(CPU* cpu, RegisterID regId) {
+	cpu->extraCycle = 2;
+	registerRotateLeft(cpu, regId, true);
+}
+void RR(CPU* cpu, RegisterID regId) {
+	cpu->extraCycle = 2;
+	registerRotateRight(cpu, regId, true);
+}
+void SLA(CPU* cpu, RegisterID regId) {
+	cpu->extraCycle = 2;
+	registerShiftLeft(cpu, regId, true);
+}
+void SRA(CPU* cpu, RegisterID regId) {
+	cpu->extraCycle = 2;
+	registerShiftRight(cpu, regId, true, true);
+}
 void SWAP(CPU* cpu, RegisterID regId) {
+	cpu->extraCycle = 2;
 	u8 value = readFromRegister8(cpu, regId);
 	u8 result = MakeByte(GetHighNybble(value), GetLowNybble(value));
 	writeToRegister8(cpu, regId, result);
 
 	CPUSetFlags(cpu, result == 0, false, false, false);
 }
-void SRL(CPU* cpu, RegisterID regId) { registerShiftRight(cpu, regId, true, false); }
+void SRL(CPU* cpu, RegisterID regId) {
+	cpu->extraCycle = 2;
+	registerShiftRight(cpu, regId, true, false);
+}
 
 void BIT(CPU* cpu, RegisterID regId, u8 bitIdx) {
+	cpu->extraCycle = 2;
 	u8 value = readFromRegister8(cpu, regId);
 	bool zFlag = !GetFlag(value, bitIdx);
 
 	CPUSetFlags(cpu, zFlag, false, true, GetFlag(cpu->f, FLAG_CARRY));
 }
 void RES(CPU* cpu, RegisterID regId, u8 bitIdx) {
+	cpu->extraCycle = 2;
 	u8 value = readFromRegister8(cpu, regId);
 	value = SetBit(value, bitIdx);
 	writeToRegister8(cpu, regId, value);
 }
 void SET(CPU* cpu, RegisterID regId, u8 bitIdx) {
+	cpu->extraCycle = 2;
 	u8 value = readFromRegister8(cpu, regId);
 	value = SetBit(value, bitIdx);
 	writeToRegister8(cpu, regId, value);
