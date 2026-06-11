@@ -8,15 +8,14 @@
 
 #include <stdio.h>
 
-// returns the number of cycles it took
-// TODO: add support for windows, scrolling, etc.
-u32 PPURendererDrawScanline(PPU* ppu) {
+u32 PPURendererDrawScanlineBG(PPU* ppu) {
 	u32 screenY = ppu->scanline;
 	u32 y = screenY + ppu->bus->ppuRegs.rSCY;
 
 	u32 x = 0;
 	u32 scrollX = ppu->bus->ppuRegs.rSCX;
 	u8 fineXOffset = scrollX % 8;
+	// u32 renderCycles = fineXOffset + 12;
 
 	u32 tileVert = y / 8;
 
@@ -38,14 +37,19 @@ u32 PPURendererDrawScanline(PPU* ppu) {
 			// printf("displaying pixel %X%X%X%X at x = %d, y = %d\n", c.a, c.b, c.g, c.r, x, y);
 
 			PPUPlot(ppu, x++, screenY, c);
+			// renderCycles++;
 			if (x >= PPU_SCREEN_WIDTH) break;
 		}
 		fineXOffset = 0;
 		TileStripDestroy(strip);
 	}
 
-	return 1;  // temporary
+	return 172;	 // renderCycles;  // temporary
 }
+
+u32 PPURendererDrawScanlineWindow(PPU* ppu) { return 0; }
+
+u32 PPURendererDrawScanlineOBJ(PPU* ppu) { return 0; }
 
 void PPURendererDrawTilesetScanline(PPU* ppu) {
 	u32 screenY = ppu->scanline;
@@ -59,8 +63,7 @@ void PPURendererDrawTilesetScanline(PPU* ppu) {
 	for (u32 tileHorz = 0; tileHorz < 0x10 /*(PPU_SCREEN_WIDTH / 8)*/; tileHorz++) {
 		u32 tileIndex = tileVert * 0x10 + tileHorz;
 
-		u8 tileId = MemoryBusRead(ppu->bus, tileMapBase + tileIndex, false);
-		if (ppu->frame == 0 && tileVert == 3 && y % 8 == 0) printf("tile %d at index %d,%d\n", tileId, tileHorz, tileVert);
+		u8 tileId = tileIndex;
 
 		// TODO: add support for LCDC.4 = 1
 		TileStrip* strip = TileStripCreate(ppu, tileIndex, y % 8, (GetFlag(ppu->bus->ppuRegs.rLCDC, 4)) ? 0x8000 : 0x9000);
@@ -72,12 +75,12 @@ void PPURendererDrawTilesetScanline(PPU* ppu) {
 			Color c = DMG_MASTER_PALETTE[colorIndex % 4];
 			// printf("displaying pixel %X%X%X%X at x = %d, y = %d\n", c.a, c.b, c.g, c.r, x, y);
 
-			if (GetFlag(ppu->bus->ppuRegs.rLCDC, 0)) {
-				PPUPlot(ppu, x, screenY, DMG_MASTER_PALETTE[3]);
-			} else {
-				PPUPlot(ppu, x, screenY, c);
-			}
+			PPUPlot(ppu, x, screenY, c);
 		}
 		TileStripDestroy(strip);
 	}
 }
+
+// returns the number of cycles it took
+// TODO: add support for windows, etc.
+u32 PPURendererDrawScanline(PPU* ppu) { return PPURendererDrawScanlineBG(ppu); }
