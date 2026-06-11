@@ -17,6 +17,8 @@ typedef struct PPU {
 	size_t scanline;
 	size_t cycle;
 
+	size_t waitCycles;
+
 	bool isOff;
 } PPU;
 

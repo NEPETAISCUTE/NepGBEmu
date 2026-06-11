@@ -6,6 +6,22 @@
 		(Color){0x1b, 0x2a, 0x09, 0xFF},
 };*/
 
+static void PPURequestVBlankInterrupt(PPU* ppu) {
+	if (!ppu->bus->isBootRomLoaded) printf("requesting vblank at frame %d, scanline %d, cycle %d\n", ppu->frame, ppu->scanline, ppu->cycle);
+	MemoryBusWrite(ppu->bus, 0xFF0F, SetBit(MemoryBusRead(ppu->bus, 0xFF0F, false), 0), false);
+}
+
+static void PPUUpdateSTATMode(PPU* ppu, u8 mode, bool requestInterrupt) {
+	mode = mode & 0b11;
+	u8 stat = ppu->bus->ppuRegs.rSTAT;
+	u8 prevMode = stat & 0b11;
+	if (prevMode == mode) return;
+	// printf("prevMode %d != mode %d at scanline %d\n", prevMode, mode, ppu->scanline);
+	ppu->bus->ppuRegs.rSTAT = AssignBits(stat, 0, 2, mode);
+	if (mode == 3) return;
+	if (GetFlag(ppu->bus->ppuRegs.rSTAT, 3 + mode)) MemoryBusWrite(ppu->bus, 0xFF0F, SetBit(MemoryBusRead(ppu->bus, 0xFF0F, false), 1), false);
+}
+
 static bool PPUInitFrameBuffer(PPU* ppu) {
 	// Stitching an image manually since Raylib doesn't offer a neat way to create
 	// an image without allocating memory
@@ -31,7 +47,9 @@ PPU* PPUCreate(MemoryBus* bus) {
 	}
 
 	ppu->bus = bus;
-	ppu->bus->ppuRegs.rLCDC = SetBit(ppu->bus->ppuRegs.rLCDC, 7);
+
+	ppu->isOff = true;
+	PPUUpdateSTATMode(ppu, 0, true);
 
 	return ppu;
 }
@@ -82,7 +100,9 @@ void PPUUpdate(PPU* ppu) {
 			ppu->framebuffer[i] = DMG_MASTER_PALETTE[4];  // whiter than white, color impossible to get without screen off
 		}
 
-		ppu->bus->ppuRegs.rSTAT = AssignBits(ppu->bus->ppuRegs.rSTAT, 0, 2, 0);	 // mode 0
+		PPUUpdateSTATMode(ppu, 0, false);  // mode 0
+
+		printf("ppu is off\n");
 
 		ppu->isOff = true;
 		return;
@@ -90,10 +110,23 @@ void PPUUpdate(PPU* ppu) {
 
 	if (ppu->isOff) {
 		if (GetFlag(ppu->bus->ppuRegs.rLCDC, 7)) {
+			printf("ppu is on\n");
 			ppu->isOff = false;
+			ppu->cycle = 0;
+			ppu->scanline = 0;
 			// will render whatever there is to draw in VRAM, so no need to fill the framebuffer
 		} else {
-			PPURenderFrame(ppu);
+			// all this is just to avoid slowing CPU down to a halt due to frame rate being locked at 60 FPS, frames are not rendered at all, and
+			// frame counter doesn't move
+			if (ppu->scanline >= SCANLINE_VBLANK_END) {
+				ppu->scanline = 0;
+				PPURenderFrame(ppu);
+			}
+			ppu->cycle++;
+			if (ppu->cycle >= 456) {
+				ppu->cycle = 0;
+				ppu->scanline++;
+			}
 			return;
 		}
 	}
@@ -101,31 +134,38 @@ void PPUUpdate(PPU* ppu) {
 	if (ppu->scanline < SCANLINE_VBLANK_START) {
 		if (ppu->cycle == 0) {
 			ppu->bus->oamLock = true;
-			ppu->bus->ppuRegs.rSTAT = AssignBits(ppu->bus->ppuRegs.rSTAT, 0, 2, 2);	 // mode 2
+			ppu->bus->videoMemLock = false;
+			PPUUpdateSTATMode(ppu, 2, true);  // mode 2
 		} else if (ppu->cycle < CYCLE_OAMSCAN_END) {
 		} else if (ppu->cycle == CYCLE_OAMSCAN_END) {
 			ppu->bus->oamLock = true;
 			ppu->bus->videoMemLock = true;
-			ppu->cycle += PPURendererDrawScanline(ppu) - 1;
-			ppu->bus->ppuRegs.rSTAT = AssignBits(ppu->bus->ppuRegs.rSTAT, 0, 2, 3);	 // mode 3
-																					 // PPURendererDrawTilesetScanline(ppu);
-		} else {
-			ppu->bus->oamLock = false;
-			ppu->bus->videoMemLock = false;
-			ppu->bus->ppuRegs.rSTAT = AssignBits(ppu->bus->ppuRegs.rSTAT, 0, 2, 0);	 // mode 0
-																					 // TODO:
-																					 //  take in account SCX penality (SCX % 8)
-																					 //  take in account window fetcher setup (6 dots)
-																					 //  take in account OBJ penalty (6 to 11 dots)
+			// TODO:
+			//  take in account window fetcher setup (6 dots)
+			//  take in account OBJ penalty (6 to 11 dots)
 			//  - number of pixels to the right of the pixel to draw if tile not
 			//  considered before - 2 (if negative, 0 penalty)
 			//  - add a base penalty of 6 dots
 			//  - if OBJ is completely off-screen, 11 dot penalty regardless of SCX
+			ppu->waitCycles = PPURendererDrawScanline(ppu) - 1;	 // 172 to 289 dots
+			// printf("waitCycles at scanline %d: %d\n", ppu->scanline, ppu->waitCycles + 1);
+			PPUUpdateSTATMode(ppu, 3, true);  // mode 3
+											  // PPURendererDrawTilesetScanline(ppu);
+		} else if (ppu->waitCycles > 0) {
+			ppu->waitCycles--;
+			// if (ppu->waitCycles == 0) printf("in HBlank at cycle %d\n", ppu->cycle + 1);
+		} else {
+			ppu->bus->oamLock = false;
+			ppu->bus->videoMemLock = false;
+			PPUUpdateSTATMode(ppu, 0, true);  // mode 0
 		}
 	} else if (ppu->scanline < SCANLINE_VBLANK_END) {
-		ppu->bus->oamLock = false;
-		ppu->bus->videoMemLock = false;
-		ppu->bus->ppuRegs.rSTAT = AssignBits(ppu->bus->ppuRegs.rSTAT, 0, 2, 1);	 // mode 1
+		if (GetBits(ppu->bus->ppuRegs.rSTAT, 0, 2) == 0) {
+			ppu->bus->oamLock = false;
+			ppu->bus->videoMemLock = false;
+			PPUUpdateSTATMode(ppu, 1, true);  // mode 1
+			PPURequestVBlankInterrupt(ppu);
+		}
 	} else {
 		ppu->scanline = 0;
 		ppu->frame++;
