@@ -202,9 +202,20 @@ void MemoryBusWrite(MemoryBus* bus, u16 address, u8 value, bool isCPU) {
 		if (address <= 0xFF3F) {
 			if (address == 0xFF00) {
 				JoypadRegWrite(&bus->joyReg, value);
+			} else if (address == 0xFF01) {
+				fprintf(stderr, "serial data received: %02X\n", value);
 			} else if (address == 0xFF0F) {
 				bus->rIF = value;
 				// fprintf(stderr, "value %X written to rIF\n", value);
+			}
+		} else if (address == 0xFF46) {
+			// OAM DMA
+			// TODO: implement actual cycle wait for the DMA
+			for (u8 idx = 0; idx < 0xA0; idx++) {
+				u16 addrSrc = BuildU16(value, idx);
+				u16 addrDest = BuildU16(0xFE, idx);
+
+				MemoryBusWriteCPU(bus, addrDest, MemoryBusReadCPU(bus, addrSrc));
 			}
 		} else if (address <= 0xFF4B) {
 			PPURegistersWrite(&bus->ppuRegs, address, value);
