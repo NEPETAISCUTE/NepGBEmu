@@ -346,10 +346,15 @@ void DECr16(CPU* cpu, RegisterID regId) {
 	writeToRegister16(cpu, readFromRegister16(cpu, regId, false) - 1, regId, false);
 }
 // H and C
+// added flag support
 void ADDr16Tohl(CPU* cpu, RegisterID regId) {
 	cpu->extraCycle = 2;
-	u16 value = readFromRegister16(cpu, regId, false) + readFromRegister16(cpu, REG16_HL, false);
-	writeToRegister16(cpu, value, REG16_HL, false);
+	u16 currentValue = readFromRegister16(cpu, REG16_HL, false);
+	u16 addend = readFromRegister16(cpu, regId, false);
+	u32 sum = currentValue + addend;
+	writeToRegister16(cpu, sum, REG16_HL, false);
+
+	CPUSetFlags(cpu, GetFlag(cpu->f, FLAG_ZERO), false, (currentValue & 0x0FFF) + (addend & 0x0FFF) > 0x0FFF, sum > 0xFFFF);
 }
 
 // Z, N and H TODO: implement flag handling
@@ -396,23 +401,26 @@ void RRA(CPU* cpu) {
 	cpu->extraCycle = 1;
 	registerRotateRight(cpu, REG8_A, false);
 }
-// carry is weird on this one, the rest is correct, TODO: look into carry implem here
+// fixed DAA, flags are now correct
 void DAA(CPU* cpu) {
 	cpu->extraCycle = 1;
 	bool nFlag = GetFlag(cpu->f, FLAG_SUBTRACT);
+	bool carry = false;
+
+	u8 value = cpu->a;
 	if (nFlag) {
-		u8 adjustment = 0;
-		if (GetFlag(cpu->f, FLAG_HALFCARRY)) adjustment += 0x06;
-		if (GetFlag(cpu->f, FLAG_CARRY)) adjustment += 0x60;
-		cpu->a -= adjustment;
+		if (GetFlag(cpu->f, FLAG_HALFCARRY)) value -= 0x06;
+		if (GetFlag(cpu->f, FLAG_CARRY)) value -= 0x60;
 	} else {
-		u8 adjustment = 0;
-		if (GetFlag(cpu->f, FLAG_HALFCARRY) || ((cpu->a & 0xF) > 0x9)) adjustment += 0x06;
-		if (GetFlag(cpu->f, FLAG_CARRY) || (cpu->a > 0x99)) adjustment += 0x60;
-		cpu->a += adjustment;
+		if (GetFlag(cpu->f, FLAG_HALFCARRY) || ((cpu->a & 0xF) > 0x9)) value += 0x06;
+		if (GetFlag(cpu->f, FLAG_CARRY) || (cpu->a > 0x99)) {
+			value += 0x60;
+			carry = true;
+		}
 	}
+	cpu->a = value;
 	// carry flag not properly implemented probably
-	CPUSetFlags(cpu, cpu->a == 0, nFlag, false, false);
+	CPUSetFlags(cpu, cpu->a == 0, nFlag, false, carry);
 }
 // N and H set, rest is unchanged
 void CPL(CPU* cpu) {
@@ -515,59 +523,48 @@ void HALT(CPU* cpu) {
 
 void ADDreg8(CPU* cpu, RegisterID regId) {
 	cpu->extraCycle = 1;
-	u16 sum = 0;
 
-	sum = cpu->a;
-	sum += readFromRegister8(cpu, regId);
+	u8 currentValue = cpu->a;
+	u8 addend = readFromRegister8(cpu, regId);
+	u16 sum = currentValue + addend;
 	cpu->a = GetLowByte(sum);
 
-	CPUSetFlags(cpu, GetLowByte(sum) == 0, false, sum > 0xF, sum > 0xFF);
+	CPUSetFlags(cpu, GetLowByte(sum) == 0, false, GetLowNybble(currentValue) + GetLowNybble(addend) > 0xF, sum > 0xFF);
 }
 void ADCreg8(CPU* cpu, RegisterID regId) {
 	cpu->extraCycle = 1;
-	u16 sum = 0;
 
-	sum = cpu->a;
-	sum += readFromRegister8(cpu, regId);
-	if (GetFlag(cpu->f, FLAG_CARRY)) sum++;
+	u8 currentValue = cpu->a;
+	u8 addend = readFromRegister8(cpu, regId);
+	u8 carry = GetFlag(cpu->f, FLAG_CARRY) ? 1 : 0;
+	u16 sum = currentValue + addend + carry;
 	cpu->a = GetLowByte(sum);
 
-	CPUSetFlags(cpu, GetLowByte(sum) == 0, false, sum > 0xF, sum > 0xFF);
+	CPUSetFlags(cpu, GetLowByte(sum) == 0, false, GetLowNybble(currentValue) + GetLowNybble(addend) + carry > 0xF, sum > 0xFF);
 }
-// not sure how to handle half carry
 void SUBreg8(CPU* cpu, RegisterID regId) {
 	cpu->extraCycle = 1;
-	s16 sum = 0;
 
-	u8 value = readFromRegister8(cpu, regId);
-
-	bool halfCarry = ((cpu->a & 0xF) - (value & 0xF)) < 0;
-
-	sum = cpu->a;
-	sum -= value;
+	u8 currentValue = cpu->a;
+	u8 subtrahend = readFromRegister8(cpu, regId);
+	s16 sum = cpu->a - subtrahend;
 
 	cpu->a = GetLowByte(sum);
 
-	CPUSetFlags(cpu, GetLowByte(sum) == 0, true, halfCarry, sum < 0);
+	CPUSetFlags(cpu, GetLowByte(sum) == 0, true, GetLowNybble(subtrahend) > GetLowNybble(currentValue), subtrahend > currentValue);
 }
 void SBCreg8(CPU* cpu, RegisterID regId) {
 	cpu->extraCycle = 1;
-	s16 sum = 0;
 
-	u8 value = readFromRegister8(cpu, regId);
+	u8 currentValue = cpu->a;
+	u8 subtrahend = readFromRegister8(cpu, regId);
+	u8 carry = GetFlag(cpu->f, FLAG_CARRY) ? 1 : 0;
+	s16 sum = cpu->a - (subtrahend + carry);
 
-	bool carry = GetFlag(cpu->f, FLAG_CARRY);
-
-	bool halfCarry = ((cpu->a & 0xF) - (value & 0xF)) - ((carry) ? 1 : 0) < 0;
-
-	sum = cpu->a;
-	sum -= value;
-	if (carry) sum--;
-
-	carry = sum < 0;
 	cpu->a = GetLowByte(sum);
 
-	CPUSetFlags(cpu, GetLowByte(sum) == 0, true, halfCarry, carry);
+	CPUSetFlags(cpu, GetLowByte(sum) == 0, true, GetLowNybble(subtrahend) + carry > GetLowNybble(currentValue),
+				subtrahend + carry > currentValue);
 }
 
 void ANDreg8(CPU* cpu, RegisterID regId) {
@@ -799,14 +796,15 @@ void LDaToDerefImm16(CPU* cpu, u16 value) {
 	MemoryBusWriteCPU(cpu->bus, value, cpu->a);
 }
 
-// unsure if carry and half carry are implemented correctly, to check
+// sure that flags are now correct
 void ADDsp(CPU* cpu, s8 value) {
 	cpu->extraCycle = 4;
 	s16 sum = cpu->sp + value;
-	u8 lowNybbleValue = ((cpu->sp & 0xFF) + (value & 0xF));
+	u8 lowNybbleValue = ((cpu->sp & 0xF) + (value & 0xF));
 	cpu->sp = sum;
-	bool isHalfCarry = lowNybbleValue < 0 || lowNybbleValue > 0xFF;
-	CPUSetFlags(cpu, false, false, isHalfCarry, value < 0 || value > 0xFFFF);
+	bool isHalfCarry = lowNybbleValue > 0xF;
+	u16 carrySum = GetLowByte(cpu->sp) + value;
+	CPUSetFlags(cpu, false, false, isHalfCarry, carrySum > 0xFF);
 }
 // same as above
 void LDspPlusImm8ToHL(CPU* cpu, u8 value) {
