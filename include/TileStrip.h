@@ -5,6 +5,8 @@
 #include "PPU.h"
 
 typedef struct TileStrip {
+	u8 tileId;
+
 	u8 pixelArray[8];
 } TileStrip;
 

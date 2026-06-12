@@ -18,6 +18,23 @@ static void PPUUpdateSTATMode(PPU* ppu, u8 mode, bool requestInterrupt) {
 	if (prevMode == mode) return;
 	// printf("prevMode %d != mode %d at scanline %d\n", prevMode, mode, ppu->scanline);
 	ppu->bus->ppuRegs.rSTAT = AssignBits(stat, 0, 2, mode);
+	// changing locking
+	switch (mode) {
+		case 0:
+		case 1:
+			ppu->bus->oamLock = false;
+			ppu->bus->videoMemLock = false;
+			break;
+		case 2:
+			ppu->bus->oamLock = true;
+			ppu->bus->videoMemLock = false;
+			break;
+		case 3:
+			ppu->bus->oamLock = true;
+			ppu->bus->videoMemLock = true;
+			break;
+		default:
+	}
 	if (mode == 3) return;
 	if (GetFlag(ppu->bus->ppuRegs.rSTAT, 3 + mode)) MemoryBusWrite(ppu->bus, 0xFF0F, SetBit(MemoryBusRead(ppu->bus, 0xFF0F, false), 1), false);
 }
@@ -133,13 +150,9 @@ void PPUUpdate(PPU* ppu) {
 
 	if (ppu->scanline < SCANLINE_VBLANK_START) {
 		if (ppu->cycle == 0) {
-			ppu->bus->oamLock = true;
-			ppu->bus->videoMemLock = false;
 			PPUUpdateSTATMode(ppu, 2, true);  // mode 2
 		} else if (ppu->cycle < CYCLE_OAMSCAN_END) {
 		} else if (ppu->cycle == CYCLE_OAMSCAN_END) {
-			ppu->bus->oamLock = true;
-			ppu->bus->videoMemLock = true;
 			// TODO:
 			//  take in account window fetcher setup (6 dots)
 			//  take in account OBJ penalty (6 to 11 dots)
@@ -155,14 +168,10 @@ void PPUUpdate(PPU* ppu) {
 			ppu->waitCycles--;
 			// if (ppu->waitCycles == 0) printf("in HBlank at cycle %d\n", ppu->cycle + 1);
 		} else {
-			ppu->bus->oamLock = false;
-			ppu->bus->videoMemLock = false;
 			PPUUpdateSTATMode(ppu, 0, true);  // mode 0
 		}
 	} else if (ppu->scanline < SCANLINE_VBLANK_END) {
 		if (GetBits(ppu->bus->ppuRegs.rSTAT, 0, 2) == 0) {
-			ppu->bus->oamLock = false;
-			ppu->bus->videoMemLock = false;
 			PPUUpdateSTATMode(ppu, 1, true);  // mode 1
 			PPURequestVBlankInterrupt(ppu);
 		}
@@ -178,8 +187,6 @@ void PPUUpdate(PPU* ppu) {
 	if (ppu->cycle >= 456) {
 		ppu->cycle = 0;
 		ppu->scanline++;
-		ppu->bus->oamLock = true;
-		ppu->bus->videoMemLock = false;
 	}
 	ppu->bus->ppuRegs.rLY = ppu->scanline;
 }

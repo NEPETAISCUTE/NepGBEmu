@@ -1,6 +1,7 @@
 #include "PPURenderer.h"
 
 #include "MasterPalette.h"
+#include "PPUObject.h"
 #include "TileStrip.h"
 #include "common.h"
 
@@ -49,7 +50,55 @@ u32 PPURendererDrawScanlineBG(PPU* ppu) {
 
 u32 PPURendererDrawScanlineWindow(PPU* ppu) { return 0; }
 
-u32 PPURendererDrawScanlineOBJ(PPU* ppu) { return 0; }
+u32 PPURendererDrawScanlineOBJ(PPU* ppu) {
+	u8 objRenderCnt = 0;
+
+	// TODO: implement OBJ selection
+	// TODO: add drawing priority
+
+	size_t penalty = 0;
+
+	for (size_t i = 0; i < 40; i++) {
+		if (objRenderCnt >= 10) break;
+		u8 objY = MemoryBusRead(ppu->bus, OAM_START + 4 * i, false);
+		bool is8x16 = GetFlag(MemoryBusRead(ppu->bus, 0xFF40, false), 2);
+
+		if ((ppu->scanline - (objY - 16)) >= ((is8x16) ? 16 : 8)) continue;
+
+		PPUObject* obj = PPUObjectCreate(ppu, i);
+		// penalty calculation:
+		// TODO: take in account the window
+		if (obj->x == 0) {
+			penalty += 11;
+		} else {
+			// u8 tileX = (obj->x - 8 + ppu->bus->ppuRegs.rSCX) / 8;
+			// u8 tileY = (ppu->scanline + ppu->bus->ppuRegs.rSCY) / 8;
+
+			// TODO: calculate penalty
+		}
+
+		for (size_t objX = 0; objX < 8; objX++) {
+			u8 colorIndex;
+			if (obj->useOBP1) {
+				colorIndex = GetBits(ppu->bus->ppuRegs.rOBP1, TileStripGetColorIndex(obj->strip, objX) * 2, 2);
+			} else {
+				colorIndex = GetBits(ppu->bus->ppuRegs.rOBP0, TileStripGetColorIndex(obj->strip, objX) * 2, 2);
+			}
+
+			if (colorIndex != 3) {
+				Color c = ppu->framebuffer[ppu->scanline * 160 + obj->x + objX];
+				Color transparent = DMG_MASTER_PALETTE[0];
+				if (!obj->BGPriority || (transparent.r == c.r && transparent.g == c.g && transparent.b == c.b && transparent.a == c.a)) {
+					PPUPlot(ppu, obj->x + objX - 8, ppu->scanline, DMG_MASTER_PALETTE[colorIndex]);
+				}
+			}
+		}
+		PPUObjectDestroy(obj);
+		objRenderCnt++;
+	}
+
+	return 0;
+}
 
 void PPURendererDrawTilesetScanline(PPU* ppu) {
 	u32 screenY = ppu->scanline;
@@ -83,4 +132,4 @@ void PPURendererDrawTilesetScanline(PPU* ppu) {
 
 // returns the number of cycles it took
 // TODO: add support for windows, etc.
-u32 PPURendererDrawScanline(PPU* ppu) { return PPURendererDrawScanlineBG(ppu); }
+u32 PPURendererDrawScanline(PPU* ppu) { return PPURendererDrawScanlineBG(ppu) + PPURendererDrawScanlineOBJ(ppu); }

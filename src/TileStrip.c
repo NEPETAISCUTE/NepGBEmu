@@ -16,6 +16,7 @@ TileStrip* TileStripCreate(PPU* ppu, u8 tileID, u8 scanline, u16 blockOrigin) {
 		// printf("tileID = %d, relY = %d, relX = %d, colorIndex = %d\n", tileID, relY, 7 - i, colorIndex);
 		tileStrip->pixelArray[7 - i] = colorIndex;	// apparently it's backwards
 	}
+	tileStrip->tileId = tileID;
 	return tileStrip;
 }
 void TileStripDestroy(TileStrip* tileStrip) { free(tileStrip); }
