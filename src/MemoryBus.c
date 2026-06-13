@@ -103,7 +103,8 @@ u8 MemoryBusRead(MemoryBus* bus, u16 address, bool isCPU) {
 	}
 
 	if (address >= WRAM_BANKX_START && address < MIRROR_WRAM_START) {
-		return bus->workRAM[address - WRAM_BANK0_START + 0x1000 * bus->workRAMBank];
+		return MemoryBusRead(bus, address - 0x1000, isCPU);
+		// return bus->workRAM[address - WRAM_BANK0_START + 0x1000 * bus->workRAMBank];
 	}
 
 	if (address >= MIRROR_WRAM_START && address < OAM_START) {
@@ -122,17 +123,20 @@ u8 MemoryBusRead(MemoryBus* bus, u16 address, bool isCPU) {
 
 	if (address >= IO_REG_START && address < HRAM_START) {
 		if (address <= 0xFF3F) {
-			if (address == 0xFF00) {
+			if (address >= 0xFF04 && address <= 0xFF07) {
+				printf("READ %04X\n", address);
+			} else if (address == 0xFF00) {
 				return JoypadRegRead(&bus->joyReg);
 			} else if (address == 0xFF0F) {
 				return bus->rIF;
 			}
 		} else if (address <= 0xFF4B) {
+			if (address == 0xFF41) printf("READ STAT = %02X\n", PPURegistersRead(&bus->ppuRegs, address));
 			return PPURegistersRead(&bus->ppuRegs, address);
 		} else if (false) {
 		} else {
 		}
-		return 0;
+		return 0xFF;
 	}
 
 	if (address >= HRAM_START && address < INTERRUPT_ENABLE) {
@@ -143,7 +147,7 @@ u8 MemoryBusRead(MemoryBus* bus, u16 address, bool isCPU) {
 		return bus->rIE;
 	}
 
-	return 0;
+	return 0xFF;
 }
 
 void MemoryBusWrite(MemoryBus* bus, u16 address, u8 value, bool isCPU) {
@@ -163,7 +167,6 @@ void MemoryBusWrite(MemoryBus* bus, u16 address, u8 value, bool isCPU) {
 					address, value, bus->ppuRegs.rLY, GetBits(bus->ppuRegs.rSTAT, 0, 2));
 			return;
 		}
-
 		bus->videoRAM[address - VRAM_START] = value;
 		return;
 	}
@@ -200,7 +203,8 @@ void MemoryBusWrite(MemoryBus* bus, u16 address, u8 value, bool isCPU) {
 
 	if (address >= IO_REG_START && address < HRAM_START) {
 		if (address <= 0xFF3F) {
-			if (address == 0xFF00) {
+			if (address >= 0xFF04 && address <= 0xFF07) {
+			} else if (address == 0xFF00) {
 				JoypadRegWrite(&bus->joyReg, value);
 			} else if (address == 0xFF01) {
 				fprintf(stderr, "serial data received: %02X\n", value);
