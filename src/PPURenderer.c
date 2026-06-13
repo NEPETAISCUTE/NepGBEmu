@@ -132,4 +132,11 @@ void PPURendererDrawTilesetScanline(PPU* ppu) {
 
 // returns the number of cycles it took
 // TODO: add support for windows, etc.
-u32 PPURendererDrawScanline(PPU* ppu) { return PPURendererDrawScanlineBG(ppu) + PPURendererDrawScanlineOBJ(ppu); }
+u32 PPURendererDrawScanline(PPU* ppu) {
+	u32 cycleTime = PPURendererDrawScanlineBG(ppu);
+	if (GetFlag(ppu->bus->ppuRegs.rLCDC, 1)) {
+		cycleTime += PPURendererDrawScanlineOBJ(ppu);
+	}
+
+	return cycleTime;
+}
