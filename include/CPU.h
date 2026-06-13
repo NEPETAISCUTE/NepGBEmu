@@ -66,6 +66,7 @@ typedef struct CPU {
 	u8 cycle;
 	u8 extraCycle;	// may be unused, not sure if there are cycle penalties
 
+	u8 imeInstructionTimer;
 } CPU;
 
 CPU* CPUCreate(MemoryBus* bus);
