@@ -7,8 +7,13 @@
 };*/
 
 static void PPURequestVBlankInterrupt(PPU* ppu) {
-	if (!ppu->bus->isBootRomLoaded) printf("requesting vblank at frame %d, scanline %d, cycle %d\n", ppu->frame, ppu->scanline, ppu->cycle);
+	// if (!ppu->bus->isBootRomLoaded) printf("requesting vblank at frame %d, scanline %d, cycle %d\n", ppu->frame, ppu->scanline, ppu->cycle);
 	MemoryBusWrite(ppu->bus, 0xFF0F, SetBit(MemoryBusRead(ppu->bus, 0xFF0F, false), 0), false);
+}
+
+static void PPURequestSTATInterrupt(PPU* ppu) {
+	// if (!ppu->bus->isBootRomLoaded) printf("requesting stat at frame %d, scanline %d, cycle %d\n", ppu->frame, ppu->scanline, ppu->cycle);
+	MemoryBusWrite(ppu->bus, 0xFF0F, SetBit(MemoryBusRead(ppu->bus, 0xFF0F, false), 1), false);
 }
 
 static void PPUUpdateSTATMode(PPU* ppu, u8 mode, bool requestInterrupt) {
@@ -35,8 +40,8 @@ static void PPUUpdateSTATMode(PPU* ppu, u8 mode, bool requestInterrupt) {
 			break;
 		default:
 	}
-	if (mode == 3) return;
-	if (GetFlag(ppu->bus->ppuRegs.rSTAT, 3 + mode)) MemoryBusWrite(ppu->bus, 0xFF0F, SetBit(MemoryBusRead(ppu->bus, 0xFF0F, false), 1), false);
+	if (mode != 3 && GetFlag(ppu->bus->ppuRegs.rSTAT, 3 + mode)) PPURequestSTATInterrupt(ppu);
+	if (GetFlag(ppu->bus->ppuRegs.rSTAT, 6) && ppu->bus->ppuRegs.rLYC == ppu->bus->ppuRegs.rLY) PPURequestSTATInterrupt(ppu);
 }
 
 static bool PPUInitFrameBuffer(PPU* ppu) {
@@ -110,9 +115,6 @@ void PPUUpdate(PPU* ppu) {
 		ppu->bus->oamLock = false;
 		ppu->bus->videoMemLock = false;
 
-		ppu->scanline = 0;
-		ppu->cycle = 0;
-
 		for (size_t i = 0; i < PPU_SCREEN_WIDTH * PPU_SCREEN_HEIGHT; i++) {
 			ppu->framebuffer[i] = DMG_MASTER_PALETTE[4];  // whiter than white, color impossible to get without screen off
 		}
@@ -129,66 +131,59 @@ void PPUUpdate(PPU* ppu) {
 		if (GetFlag(ppu->bus->ppuRegs.rLCDC, 7)) {
 			printf("ppu is on\n");
 			ppu->isOff = false;
-			ppu->cycle = 0;
+			ppu->cycle = 0;	 // unsure about this
 			ppu->scanline = 0;
-			// will render whatever there is to draw in VRAM, so no need to fill the framebuffer
-		} else {
-			// all this is just to avoid slowing CPU down to a halt due to frame rate being locked at 60 FPS, frames are not rendered at all, and
-			// frame counter doesn't move
-			if (ppu->scanline >= SCANLINE_VBLANK_END) {
-				ppu->scanline = 0;
-				PPURenderFrame(ppu);
+		}
+	}
+
+	if (!ppu->isOff) {
+		if (ppu->scanline < SCANLINE_VBLANK_START) {
+			if (ppu->cycle == 0) {
+				PPUUpdateSTATMode(ppu, 2, true);  // mode 2
+			} else if (ppu->cycle < CYCLE_OAMSCAN_END) {
+			} else if (ppu->cycle == CYCLE_OAMSCAN_END) {
+				// TODO:
+				//  take in account window fetcher setup (6 dots)
+				//  take in account OBJ penalty (6 to 11 dots)
+				//  - number of pixels to the right of the pixel to draw if tile not
+				//  considered before - 2 (if negative, 0 penalty)
+				//  - add a base penalty of 6 dots
+				//  - if OBJ is completely off-screen, 11 dot penalty regardless of SCX
+				ppu->waitCycles = PPURendererDrawScanline(ppu) - 1;	 // 172 to 289 dots
+				// printf("waitCycles at scanline %d: %d\n", ppu->scanline, ppu->waitCycles + 1);
+				PPUUpdateSTATMode(ppu, 3, true);  // mode 3
+												  // PPURendererDrawTilesetScanline(ppu);
+			} else if (ppu->waitCycles > 0) {
+				ppu->waitCycles--;
+				// if (ppu->waitCycles == 0) printf("in HBlank at cycle %d\n", ppu->cycle + 1);
+			} else {
+				PPUUpdateSTATMode(ppu, 0, true);  // mode 0
 			}
-			ppu->cycle++;
-			if (ppu->cycle >= 456) {
-				ppu->cycle = 0;
-				ppu->scanline++;
+		} else if (ppu->scanline < SCANLINE_VBLANK_END) {
+			if (GetBits(ppu->bus->ppuRegs.rSTAT, 0, 2) != 1) {
+				PPUUpdateSTATMode(ppu, 1, true);  // mode 1
+				PPURequestVBlankInterrupt(ppu);
+
+				// what happens after that doesn't matter since it's vblank and the ppu doesn't draw, + if we turn off and turn on ppu, it
+				// shouldn't "not render"
 			}
-			return;
+		}
+
+		ppu->cycle++;
+		if (ppu->cycle >= 456) {
+			ppu->cycle = 0;
+			ppu->scanline++;
+			ppu->bus->ppuRegs.rLY = ppu->scanline;
+			if (ppu->bus->ppuRegs.rLYC == ppu->bus->ppuRegs.rLY) PPURequestSTATInterrupt(ppu);
+		}
+		if (ppu->scanline > 153) {
+			ppu->scanline = 0;
+			ppu->frame++;
+			PPUUpdateSTATMode(ppu, 2, true);
+			// render present basically
+			PPURenderFrame(ppu);
 		}
 	}
-
-	if (ppu->scanline < SCANLINE_VBLANK_START) {
-		if (ppu->cycle == 0) {
-			PPUUpdateSTATMode(ppu, 2, true);  // mode 2
-		} else if (ppu->cycle < CYCLE_OAMSCAN_END) {
-		} else if (ppu->cycle == CYCLE_OAMSCAN_END) {
-			// TODO:
-			//  take in account window fetcher setup (6 dots)
-			//  take in account OBJ penalty (6 to 11 dots)
-			//  - number of pixels to the right of the pixel to draw if tile not
-			//  considered before - 2 (if negative, 0 penalty)
-			//  - add a base penalty of 6 dots
-			//  - if OBJ is completely off-screen, 11 dot penalty regardless of SCX
-			ppu->waitCycles = PPURendererDrawScanline(ppu) - 1;	 // 172 to 289 dots
-			// printf("waitCycles at scanline %d: %d\n", ppu->scanline, ppu->waitCycles + 1);
-			PPUUpdateSTATMode(ppu, 3, true);  // mode 3
-											  // PPURendererDrawTilesetScanline(ppu);
-		} else if (ppu->waitCycles > 0) {
-			ppu->waitCycles--;
-			// if (ppu->waitCycles == 0) printf("in HBlank at cycle %d\n", ppu->cycle + 1);
-		} else {
-			PPUUpdateSTATMode(ppu, 0, true);  // mode 0
-		}
-	} else if (ppu->scanline < SCANLINE_VBLANK_END) {
-		if (GetBits(ppu->bus->ppuRegs.rSTAT, 0, 2) == 0) {
-			PPUUpdateSTATMode(ppu, 1, true);  // mode 1
-			PPURequestVBlankInterrupt(ppu);
-		}
-	} else {
-		ppu->scanline = 0;
-		ppu->frame++;
-
-		// render present basically
-		PPURenderFrame(ppu);
-	}
-
-	ppu->cycle++;
-	if (ppu->cycle >= 456) {
-		ppu->cycle = 0;
-		ppu->scanline++;
-	}
-	ppu->bus->ppuRegs.rLY = ppu->scanline;
 }
 
 void PPUPlot(PPU* ppu, u8 x, u8 y, Color c) {
