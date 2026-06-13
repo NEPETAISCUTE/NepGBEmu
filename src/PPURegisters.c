@@ -21,7 +21,7 @@ u8 PPURegistersRead(PPURegisters* regs, u16 address) {
 void PPURegistersWrite(PPURegisters* regs, u16 address, u8 value) {
 	switch (address) {
 		case PPUREGS_ADDRESS_LCDC: regs->rLCDC = value; return;
-		case PPUREGS_ADDRESS_STAT: regs->rSTAT = GetBits(value, 3, 4); return;
+		case PPUREGS_ADDRESS_STAT: regs->rSTAT = (regs->rSTAT & 0b00000011) | GetBits(value, 3, 4); return;
 		case PPUREGS_ADDRESS_SCY: regs->rSCY = value; return;
 		case PPUREGS_ADDRESS_SCX: regs->rSCX = value; return;
 		case PPUREGS_ADDRESS_LYC: regs->rLYC = value; return;
